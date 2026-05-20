@@ -22,6 +22,18 @@ FIELD CONTRACT (HARD STOP):
     dns.question.name  → dns_question_name
     event.dataset      → event_dataset
 
+    IDS FIELDS (Suricata):
+    rule.id            → ids_rule_id
+    rule.name          → ids_rule_name
+    rule.category      → ids_rule_category
+    event.severity     → ids_severity
+    ids.severity_label → ids_severity_label
+    suricata.alert.action    → ids_alert_action
+    suricata.alert.signature → ids_alert_signature
+    suricata.alert.category  → ids_alert_category
+    suricata.alert.gid       → ids_alert_gid
+    suricata.alert.rev       → ids_alert_rev
+
 NO raw log parsing. NO Wazuh field names. NO invented fields.
 """
 
@@ -55,6 +67,18 @@ class Event:
     network_packets: Optional[int]
     dns_question_name: Optional[str]
     event_dataset: Optional[str]
+
+    # IDS fields (Suricata signature alerts)
+    ids_rule_id: Optional[str]          # rule.id from Suricata
+    ids_rule_name: Optional[str]        # rule.name (signature name)
+    ids_rule_category: Optional[str]    # rule.category
+    ids_severity: Optional[int]         # event.severity (Suricata severity 1-4)
+    ids_severity_label: Optional[str]   # ids.severity_label (critical/high/medium/low/unknown)
+    ids_alert_action: Optional[str]     # suricata.alert.action (allowed/dropped/rejected)
+    ids_alert_signature: Optional[str]  # suricata.alert.signature (full signature)
+    ids_alert_category: Optional[str]   # suricata.alert.category
+    ids_alert_gid: Optional[int]        # suricata.alert.gid (generator ID)
+    ids_alert_rev: Optional[int]        # suricata.alert.rev (signature revision)
 
     # Authentication fields
     user: Optional[str]              # user.name — target username
@@ -125,6 +149,15 @@ def _to_int(value) -> Optional[int]:
         return None
 
 
+def _to_str(value) -> Optional[str]:
+    if value is None:
+        return None
+    try:
+        return str(value)
+    except (ValueError, TypeError):
+        return None
+
+
 def _deep_get(d: dict, dotted_key: str, default=None):
     """
     Resolve a dotted key path against a nested dict.
@@ -181,6 +214,18 @@ def event_from_es_hit(hit: dict) -> Event:
     dns_question_name = _deep_get(source, "dns.question.name") or None
     event_dataset = _deep_get(source, "event.dataset") or None
 
+    # ── IDS field mapping (Suricata signature alerts) ─────────────────────
+    ids_rule_id = _to_str(_deep_get(source, "rule.id"))
+    ids_rule_name = _deep_get(source, "rule.name") or None
+    ids_rule_category = _deep_get(source, "rule.category") or None
+    ids_severity = _to_int(_deep_get(source, "event.severity"))
+    ids_severity_label = _deep_get(source, "ids.severity_label") or None
+    ids_alert_action = _deep_get(source, "suricata.alert.action") or None
+    ids_alert_signature = _deep_get(source, "suricata.alert.signature") or None
+    ids_alert_category = _deep_get(source, "suricata.alert.category") or None
+    ids_alert_gid = _to_int(_deep_get(source, "suricata.alert.gid"))
+    ids_alert_rev = _to_int(_deep_get(source, "suricata.alert.rev"))
+
     # Timestamp — CRITICAL: drop event if unparseable
     ts_raw = source.get("@timestamp", "")
     timestamp = parse_timestamp(ts_raw)   # raises ValueError → caller drops
@@ -197,6 +242,16 @@ def event_from_es_hit(hit: dict) -> Event:
         network_packets=network_packets,
         dns_question_name=dns_question_name if dns_question_name else None,
         event_dataset=event_dataset if event_dataset else None,
+        ids_rule_id=ids_rule_id,
+        ids_rule_name=ids_rule_name,
+        ids_rule_category=ids_rule_category,
+        ids_severity=ids_severity,
+        ids_severity_label=ids_severity_label,
+        ids_alert_action=ids_alert_action,
+        ids_alert_signature=ids_alert_signature,
+        ids_alert_category=ids_alert_category,
+        ids_alert_gid=ids_alert_gid,
+        ids_alert_rev=ids_alert_rev,
         user=user if user else None,
         effective_user=effective_user if effective_user else None,
         timestamp=timestamp,

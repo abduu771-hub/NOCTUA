@@ -1125,6 +1125,15 @@ def run_network_suspicious_dns(count: int, log_file: str) -> None:
     """
     Simulate suspicious DNS activity:
     one source queries multiple suspicious DNS names.
+
+    DNS timestamps are intentionally written in increasing order:
+      event 1 → now + 0s
+      event 2 → now + 1s
+      event 3 → now + 2s
+
+    This prevents the detection engine checkpoint from advancing past later
+    DNS evidence before the accumulator sees enough unique dns.question.name
+    values to fire network_suspicious_dns.
     """
     scenario = "network_suspicious_dns"
     event_count = _network_min_count(scenario, count)
@@ -1155,7 +1164,7 @@ def run_network_suspicious_dns(count: int, log_file: str) -> None:
             resolver_ip=NETWORK_DNS_RESOLVER_IP,
             rrtype="A",
             src_port=53000 + i,
-            offset_seconds=120 - min(i * 10, 119),
+            offset_seconds=i,
             seq=i,
         )
 
@@ -1169,8 +1178,6 @@ def run_network_suspicious_dns(count: int, log_file: str) -> None:
         source_ip=src_ip,
         expected_key=f"network::dns::src::{src_ip}",
     )
-
-
 def run_network_recon_combo(count: int, log_file: str) -> None:
     """
     Trigger port scan and internal sweep from the same source IP.
