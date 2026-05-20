@@ -1,0 +1,9 @@
+{
+  "last_processed_id": "0c-LQJ4BjVE7G661N8HJ",
+  "last_processed_timestamp": "2026-05-19T14:02:05.045Z",
+  "total_events_processed": 3098,
+  "total_alerts_fired": 113,
+  "engine_started_at": "2026-04-30T14:00:31.468884+00:00",
+  "watch_list_snapshot": {},
+  "saved_at": "2026-05-19T14:02:10.314642+00:00"
+}

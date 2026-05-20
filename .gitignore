@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Environment / secrets
+.env
+.env.*
+*.key
+*.pem
+*.crt
+*.p12
+*.pfx
+secrets/
+credentials/
+config/secrets*
+docker-compose.override.yml
+
+# Logs and buffers
+logs/
+*.log
+*.jsonl
+alerts_buffer.jsonl
+incidents_buffer.jsonl
+
+# Engine runtime state
+detection_engine/engine_state.json
+engine_state.json
+
+# Elasticsearch / Docker local data
+elasticsearch/data/
+data/
+.esdata/
+kibana/data/
+logstash/data/
+filebeat/data/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Node/frontend if added later
+node_modules/
+dist/
+build/
+.next/
