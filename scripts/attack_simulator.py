@@ -893,6 +893,467 @@ def _write_suricata_dns(
     }
     _append_json_line(path, event)
     return event
+def _write_suricata_ids_alert(
+    path: str,
+    *,
+    src_ip: str,
+    dest_ip: str,
+    dest_port: int,
+    signature_id: int,
+    signature: str,
+    category: str,
+    severity: int,
+    src_port: int = 51515,
+    proto: str = "TCP",
+    app_proto: str = "tls",
+    action: str = "allowed",
+    gid: int = 1,
+    rev: int = 1,
+    metadata: dict | None = None,
+    offset_seconds: int = 0,
+    seq: int = 0,
+) -> dict:
+    """
+    Append one realistic Suricata EVE IDS alert event.
+
+    This writes raw Suricata-style JSON, not ECS-normalized JSON.
+    Logstash is responsible for converting this into:
+      event.action = network_ids_alert
+      rule.id / rule.name / rule.category
+      ids_* tags
+      ready_for_detection
+    """
+    start_ts, end_ts = _suricata_timestamp_pair(offset_seconds, duration_seconds=1)
+
+    event = {
+        "timestamp": end_ts,
+        "flow_id": _suricata_flow_id(src_ip, dest_ip, dest_port, seq, offset_seconds),
+        "in_iface": "eth0",
+        "event_type": "alert",
+        "src_ip": src_ip,
+        "src_port": src_port,
+        "dest_ip": dest_ip,
+        "dest_port": dest_port,
+        "ip_v": 4,
+        "proto": proto,
+        "app_proto": app_proto,
+        "direction": "to_server",
+        "alert": {
+            "action": action,
+            "gid": gid,
+            "signature_id": signature_id,
+            "rev": rev,
+            "signature": signature,
+            "category": category,
+            "severity": severity,
+        },
+        "flow": {
+            "pkts_toserver": 5,
+            "pkts_toclient": 3,
+            "bytes_toserver": 720,
+            "bytes_toclient": 420,
+            "start": start_ts,
+            "end": end_ts,
+            "age": 1,
+            "state": "established",
+            "reason": "timeout",
+            "alerted": True,
+            "src_ip": src_ip,
+            "dest_ip": dest_ip,
+            "src_port": src_port,
+            "dest_port": dest_port,
+        },
+    }
+
+    if metadata:
+        event["alert"]["metadata"] = metadata
+        if "mitre" in metadata:
+            for k, v in metadata["mitre"].items():
+             event["alert"][f"mitre.{k}"] = v
+
+    _append_json_line(path, event)
+    return event
+
+
+def _ids_summary(
+    *,
+    scenario: str,
+    log_file: str,
+    signature: str,
+    expected_alert: str,
+    expected_incident: str,
+    source_ip: str,
+    correlation: str | None = None,
+) -> None:
+    """
+    Print consistent IDS scenario output.
+    """
+    ok(f"[IDS] Wrote 1 Suricata IDS alert to {log_file}")
+    print(f"  {CYAN}[IDS]{RESET} Scenario: {scenario}")
+    print(f"  {CYAN}[IDS]{RESET} Signature: {signature}")
+    print(f"  {CYAN}[IDS]{RESET} Expected alert: {expected_alert}")
+    print(f"  {CYAN}[IDS]{RESET} Expected incident: {expected_incident}")
+    print(f"  {CYAN}[IDS]{RESET} Source IP: {source_ip}")
+    if correlation:
+        print(f"  {CYAN}[IDS]{RESET} Expected correlation: {correlation}")
+
+
+def _run_single_ids_scenario(
+    *,
+    scenario: str,
+    log_file: str,
+    src_ip: str,
+    dest_ip: str,
+    dest_port: int,
+    signature_id: int,
+    signature: str,
+    category: str,
+    severity: int,
+    expected_alert: str,
+    expected_incident: str,
+    proto: str = "TCP",
+    app_proto: str = "tls",
+    src_port: int = 51515,
+    offset_seconds: int = 0,
+    seq: int = 0,
+    metadata: dict | None = None,
+) -> None:
+    """
+    Shared runner for direct Suricata IDS alert scenarios.
+    """
+    banner(f"{scenario}  [Suricata IDS Alert]")
+    info(f"Source IP: {src_ip}")
+    info(f"Destination: {dest_ip}:{dest_port}")
+    info(f"Signature ID: {signature_id}")
+    info(f"Signature: {signature}")
+    info(f"Category: {category}")
+    info(f"Severity: {severity}")
+    info(f"Network log file: {log_file}")
+    expect("Suricata event_type → alert")
+    expect("Logstash event.action → network_ids_alert")
+    expect(f"Expected SIEM-AI alert → {expected_alert}")
+    expect(f"Expected incident → {expected_incident}")
+
+    phase("IDS phase — Suricata alert event")
+    _write_suricata_ids_alert(
+        log_file,
+        src_ip=src_ip,
+        src_port=src_port,
+        dest_ip=dest_ip,
+        dest_port=dest_port,
+        proto=proto,
+        app_proto=app_proto,
+        signature_id=signature_id,
+        signature=signature,
+        category=category,
+        severity=severity,
+        metadata=metadata,
+        offset_seconds=offset_seconds,
+        seq=seq,
+    )
+
+    _ids_summary(
+        scenario=scenario,
+        log_file=log_file,
+        signature=signature,
+        expected_alert=expected_alert,
+        expected_incident=expected_incident,
+        source_ip=src_ip,
+    )
+
+
+def run_network_ids_malware(log_file: str, *, offset_seconds: int = 0, seq: int = 0) -> None:
+    _run_single_ids_scenario(
+        scenario="network_ids_malware",
+        log_file=log_file,
+        src_ip=NETWORK_COMPROMISED_HOST_IP,
+        dest_ip=NETWORK_EXTERNAL_SUSPICIOUS_IP,
+        dest_port=443,
+        src_port=51510 + seq,
+        signature_id=990001,
+        signature="ET MALWARE Possible Trojan Downloader Callback",
+        category="Malware Command and Control Activity",
+        severity=2,
+        expected_alert="network_ids_malware",
+        expected_incident="IDS / Malware Network Activity",
+        offset_seconds=offset_seconds,
+        seq=seq,
+        metadata={"attack_target": ["Client Endpoint"], "deployment": ["SIEM-AI test"]},
+    )
+
+
+def run_network_ids_c2(log_file: str, *, offset_seconds: int = 0, seq: int = 0) -> None:
+    _run_single_ids_scenario(
+        scenario="network_ids_c2",
+        log_file=log_file,
+        src_ip=NETWORK_COMPROMISED_HOST_IP,
+        dest_ip=NETWORK_EXTERNAL_SUSPICIOUS_IP,
+        dest_port=443,
+        src_port=51520 + seq,
+        signature_id=990002,
+        signature="ET MALWARE Possible Cobalt Strike Beacon C2",
+        category="Malware Command and Control Activity",
+        severity=1,
+        expected_alert="network_ids_c2",
+        expected_incident="IDS / Command and Control",
+        offset_seconds=offset_seconds,
+        seq=seq,
+        metadata={"attack_target": ["Client Endpoint"], "malware_family": ["Cobalt Strike"]},
+    )
+
+
+def run_network_ids_exploit(log_file: str, *, src_ip: str = NETWORK_RECON_ATTACKER_IP, offset_seconds: int = 0, seq: int = 0) -> None:
+    _run_single_ids_scenario(
+        scenario="network_ids_exploit",
+        log_file=log_file,
+        src_ip=src_ip,
+        dest_ip=NETWORK_RECON_VICTIM_IP,
+        dest_port=80,
+        src_port=51530 + seq,
+        app_proto="http",
+        signature_id=990003,
+        signature="ET EXPLOIT Possible Remote Code Execution CVE Attempt",
+        category="Attempted Administrator Privilege Gain",
+        severity=2,
+        expected_alert="network_ids_exploit",
+        expected_incident="IDS / Exploit Attempt",
+        offset_seconds=offset_seconds,
+        seq=seq,
+        metadata={"attack_target": ["Web Server"], "created_at": ["SIEM-AI test"]},
+    )
+
+
+def run_network_ids_scan_recon(log_file: str, *, offset_seconds: int = 0, seq: int = 0) -> None:
+    _run_single_ids_scenario(
+        scenario="network_ids_scan_recon",
+        log_file=log_file,
+        src_ip=NETWORK_RECON_ATTACKER_IP,
+        dest_ip=NETWORK_RECON_VICTIM_IP,
+        dest_port=22,
+        src_port=51540 + seq,
+        app_proto="ssh",
+        signature_id=990004,
+        signature="ET SCAN Nmap Scripting Engine User-Agent Detected",
+        category="Attempted Information Leak",
+        severity=2,
+        expected_alert="network_ids_scan_recon",
+        expected_incident="IDS / Network Reconnaissance",
+        offset_seconds=offset_seconds,
+        seq=seq,
+        metadata={"attack_target": ["Server"], "scan_tool": ["nmap"]},
+    )
+
+
+def run_network_ids_credential(log_file: str, *, src_ip: str = NETWORK_RECON_ATTACKER_IP, offset_seconds: int = 0, seq: int = 0) -> None:
+    _run_single_ids_scenario(
+        scenario="network_ids_credential",
+        log_file=log_file,
+        src_ip=src_ip,
+        dest_ip=NETWORK_RECON_VICTIM_IP,
+        dest_port=21,
+        src_port=51550 + seq,
+        app_proto="ftp",
+        signature_id=990005,
+        signature="ET CREDENTIALS Possible Cleartext Password Exposure",
+        category="Potential Corporate Privacy Violation",
+        severity=2,
+        expected_alert="network_ids_credential",
+        expected_incident="IDS / Credential Attack",
+        offset_seconds=offset_seconds,
+        seq=seq,
+        metadata={"attack_target": ["Credentials"], "confidence": ["High"]},
+    )
+
+
+def run_network_ids_exfiltration(log_file: str, *, offset_seconds: int = 0, seq: int = 0) -> None:
+    _run_single_ids_scenario(
+        scenario="network_ids_exfiltration",
+        log_file=log_file,
+        src_ip=NETWORK_COMPROMISED_HOST_IP,
+        dest_ip=NETWORK_EXTERNAL_SUSPICIOUS_IP,
+        dest_port=443,
+        src_port=51560 + seq,
+        signature_id=990006,
+        signature="ET TROJAN Possible DNS Tunnel Data Exfiltration",
+        category="Data Exfiltration",
+        severity=1,
+        expected_alert="network_ids_exfiltration",
+        expected_incident="IDS / Possible Data Exfiltration",
+        offset_seconds=offset_seconds,
+        seq=seq,
+        metadata={"attack_target": ["Data"], "exfiltration": ["dns tunnel"]},
+    )
+
+
+def run_network_ids_policy(log_file: str, *, offset_seconds: int = 0, seq: int = 0) -> None:
+    _run_single_ids_scenario(
+        scenario="network_ids_policy",
+        log_file=log_file,
+        src_ip=NETWORK_COMPROMISED_HOST_IP,
+        dest_ip=NETWORK_EXTERNAL_SUSPICIOUS_IP,
+        dest_port=443,
+        src_port=51570 + seq,
+        signature_id=990007,
+        signature="ET POLICY TOR Connection Attempt",
+        category="Potential Corporate Privacy Violation",
+        severity=2,
+        expected_alert="network_ids_policy",
+        expected_incident="IDS / Network Policy Violation",
+        offset_seconds=offset_seconds,
+        seq=seq,
+        metadata={"policy": ["tor"], "deployment": ["SIEM-AI test"]},
+    )
+
+
+def run_network_ids_protocol_anomaly(log_file: str, *, offset_seconds: int = 0, seq: int = 0) -> None:
+    _run_single_ids_scenario(
+        scenario="network_ids_protocol_anomaly",
+        log_file=log_file,
+        src_ip=NETWORK_COMPROMISED_HOST_IP,
+        dest_ip=NETWORK_EXTERNAL_SUSPICIOUS_IP,
+        dest_port=443,
+        src_port=51580 + seq,
+        signature_id=990008,
+        signature="ET PROTOCOL Malformed TLS Traffic Detected",
+        category="Bad Unknown Traffic",
+        severity=2,
+        expected_alert="network_ids_protocol_anomaly",
+        expected_incident="IDS / Protocol Anomaly",
+        offset_seconds=offset_seconds,
+        seq=seq,
+        metadata={"protocol": ["tls"], "anomaly": ["malformed"]},
+    )
+
+
+def run_network_ids_unknown_high(log_file: str, *, offset_seconds: int = 0, seq: int = 0) -> None:
+    _run_single_ids_scenario(
+        scenario="network_ids_unknown_high",
+        log_file=log_file,
+        src_ip=NETWORK_COMPROMISED_HOST_IP,
+        dest_ip=NETWORK_EXTERNAL_SUSPICIOUS_IP,
+        dest_port=443,
+        src_port=51590 + seq,
+        signature_id=990009,
+        signature="CUSTOM Suspicious High Severity Unknown Network Event",
+        category="Unknown Traffic",
+        severity=1,
+        expected_alert="network_ids_unknown_high",
+        expected_incident="IDS / High-Severity Unknown Alert",
+        offset_seconds=offset_seconds,
+        seq=seq,
+        mitre_id="T9999",
+        mitre_tactic="TA0000",
+        mitre_technique="T9999",
+        metadata={
+            "classification": ["unknown"],
+            "confidence": ["high"],
+        },
+    )
+
+
+def run_network_ids_c2_with_egress(count: int, log_file: str) -> None:
+    """
+    Trigger behavioral suspicious outbound, then IDS C2 from same source IP.
+    """
+    banner("IDS C2 + Behavioral Egress Combo")
+    expect("Expected correlation: IDS C2 confirms/promotes Suspicious Network Egress to Possible Command and Control")
+
+    run_network_suspicious_outbound(count, log_file)
+    run_network_ids_c2(log_file, offset_seconds=10, seq=100)
+
+    _ids_summary(
+        scenario="network_ids_c2_with_egress",
+        log_file=log_file,
+        signature="ET MALWARE Possible Cobalt Strike Beacon C2",
+        expected_alert="network_ids_c2",
+        expected_incident="IDS / Command and Control + behavioral C2 correlation",
+        source_ip=NETWORK_COMPROMISED_HOST_IP,
+        correlation="behavioral egress + IDS C2 → Possible Command and Control",
+    )
+
+
+def run_network_ids_scan_with_recon(count: int, log_file: str) -> None:
+    """
+    Trigger behavioral recon, then IDS scan/recon from same source IP.
+    """
+    banner("IDS Scan + Behavioral Recon Combo")
+    expect("Expected correlation: IDS scan confirms Network Reconnaissance")
+
+    run_network_recon_combo(count, log_file)
+    run_network_ids_scan_recon(log_file, offset_seconds=10, seq=110)
+
+    _ids_summary(
+        scenario="network_ids_scan_with_recon",
+        log_file=log_file,
+        signature="ET SCAN Nmap Scripting Engine User-Agent Detected",
+        expected_alert="network_ids_scan_recon",
+        expected_incident="IDS / Network Reconnaissance + behavioral recon correlation",
+        source_ip=NETWORK_RECON_ATTACKER_IP,
+        correlation="behavioral recon + IDS scan → Network Reconnaissance escalation",
+    )
+
+
+def run_network_ids_exfil_with_dns(count: int, log_file: str) -> None:
+    """
+    Trigger behavioral suspicious DNS, then IDS exfiltration from same source IP.
+    """
+    banner("IDS Exfiltration + Behavioral DNS Combo")
+    expect("Expected correlation: IDS exfiltration enriches DNS staging / C2 story")
+
+    run_network_suspicious_dns(count, log_file)
+    run_network_ids_exfiltration(log_file, offset_seconds=10, seq=120)
+
+    _ids_summary(
+        scenario="network_ids_exfil_with_dns",
+        log_file=log_file,
+        signature="ET TROJAN Possible DNS Tunnel Data Exfiltration",
+        expected_alert="network_ids_exfiltration",
+        expected_incident="IDS / Possible Data Exfiltration + DNS/C2 correlation",
+        source_ip=NETWORK_COMPROMISED_HOST_IP,
+        correlation="behavioral DNS + IDS exfiltration → DNS staging / C2 evidence",
+    )
+
+
+def run_network_ids_exploit_with_web(count: int, network_log_file: str, web_log_file: str) -> None:
+    """
+    Trigger web SQL injection, then IDS exploit from same source IP.
+    """
+    banner("IDS Exploit + Web Attack Combo")
+    expect("Expected correlation: IDS exploit confirms compatible web attack")
+
+    run_web_sql_injection(NETWORK_RECON_ATTACKER_IP, count, web_log_file)
+    run_network_ids_exploit(network_log_file, src_ip=NETWORK_RECON_ATTACKER_IP, offset_seconds=10, seq=130)
+
+    _ids_summary(
+        scenario="network_ids_exploit_with_web",
+        log_file=network_log_file,
+        signature="ET EXPLOIT Possible Remote Code Execution CVE Attempt",
+        expected_alert="network_ids_exploit",
+        expected_incident="IDS / Exploit Attempt + web incident correlation",
+        source_ip=NETWORK_RECON_ATTACKER_IP,
+        correlation="web attack + IDS exploit → web incident IDS confirmation",
+    )
+
+
+def run_network_ids_credential_with_auth(count: int, network_log_file: str, auth_log_file: str, user: str) -> None:
+    """
+    Trigger SSH brute force, then IDS credential alert from same source IP.
+    """
+    banner("IDS Credential + Auth Attack Combo")
+    expect("Expected correlation: IDS credential confirms auth attack")
+
+    run_ssh_bruteforce(NETWORK_RECON_ATTACKER_IP, user, count, auth_log_file)
+    run_network_ids_credential(network_log_file, src_ip=NETWORK_RECON_ATTACKER_IP, offset_seconds=10, seq=140)
+
+    _ids_summary(
+        scenario="network_ids_credential_with_auth",
+        log_file=network_log_file,
+        signature="ET CREDENTIALS Possible Cleartext Password Exposure",
+        expected_alert="network_ids_credential",
+        expected_incident="IDS / Credential Attack + auth incident correlation",
+        source_ip=NETWORK_RECON_ATTACKER_IP,
+        correlation="auth brute force + IDS credential → auth incident IDS confirmation",
+    )
 
 
 def _network_summary(
@@ -1874,6 +2335,22 @@ SCENARIOS = {
     "network_outbound_beacon_combo":      "Suspicious outbound + C2 beaconing correlation test",
     "network_port_scan_repeat":           "Network port scan repeat cooldown test",
     "network_suspicious_outbound_repeat": "Suspicious outbound repeat cooldown/promotion test",
+        # ── IDS attack-only  (Suricata EVE alert JSON) ─────────────────────────────
+    "network_ids_malware":                "Suricata IDS malware signature alert",
+    "network_ids_c2":                     "Suricata IDS command-and-control signature alert",
+    "network_ids_exploit":                "Suricata IDS exploit signature alert",
+    "network_ids_scan_recon":             "Suricata IDS scan/recon signature alert",
+    "network_ids_credential":             "Suricata IDS credential attack signature alert",
+    "network_ids_exfiltration":           "Suricata IDS exfiltration signature alert",
+    "network_ids_policy":                 "Suricata IDS network policy violation signature alert",
+    "network_ids_protocol_anomaly":       "Suricata IDS protocol anomaly signature alert",
+    "network_ids_unknown_high":           "Suricata IDS high-severity unknown signature alert",
+    # ── IDS combo / correlation scenarios ──────────────────────────────────────
+    "network_ids_c2_with_egress":         "Behavioral suspicious outbound + Suricata IDS C2 correlation test",
+    "network_ids_scan_with_recon":        "Behavioral recon + Suricata IDS scan correlation test",
+    "network_ids_exfil_with_dns":         "Behavioral suspicious DNS + Suricata IDS exfiltration correlation test",
+    "network_ids_exploit_with_web":       "Web attack + Suricata IDS exploit correlation test",
+    "network_ids_credential_with_auth":   "Auth attack + Suricata IDS credential correlation test",
     # ── Pure success-only ─────────────────────────────────────────────────────
     "ssh_success_only":        "Clean SSH successes only          (no alert)",
     "sudo_success_only":       "Clean sudo successes only         (no alert)",
@@ -1913,6 +2390,14 @@ def _print_help_scenarios() -> None:
         ("Network combo / cooldown scenarios",
          ["network_recon_combo","network_dns_outbound_combo","network_outbound_beacon_combo",
           "network_port_scan_repeat","network_suspicious_outbound_repeat"]),
+                ("Pure attack-only  — IDS  (Suricata EVE alert JSON)",
+         ["network_ids_malware","network_ids_c2","network_ids_exploit",
+          "network_ids_scan_recon","network_ids_credential","network_ids_exfiltration",
+          "network_ids_policy","network_ids_protocol_anomaly","network_ids_unknown_high"]),
+        ("IDS combo / correlation scenarios",
+         ["network_ids_c2_with_egress","network_ids_scan_with_recon",
+          "network_ids_exfil_with_dns","network_ids_exploit_with_web",
+          "network_ids_credential_with_auth"]),
         ("Pure success-only  (negative tests)",
          ["ssh_success_only","sudo_success_only"]),
         ("2-stage compound  (incident expected)",
@@ -2069,6 +2554,48 @@ def main() -> None:
 
     elif s == "network_suspicious_outbound_repeat":
         run_network_suspicious_outbound_repeat(args.count, nlf)
+        # ── IDS attack-only  (Suricata EVE alert JSON) ────────────────────────────
+    elif s == "network_ids_malware":
+        run_network_ids_malware(nlf)
+
+    elif s == "network_ids_c2":
+        run_network_ids_c2(nlf)
+
+    elif s == "network_ids_exploit":
+        run_network_ids_exploit(nlf)
+
+    elif s == "network_ids_scan_recon":
+        run_network_ids_scan_recon(nlf)
+
+    elif s == "network_ids_credential":
+        run_network_ids_credential(nlf)
+
+    elif s == "network_ids_exfiltration":
+        run_network_ids_exfiltration(nlf)
+
+    elif s == "network_ids_policy":
+        run_network_ids_policy(nlf)
+
+    elif s == "network_ids_protocol_anomaly":
+        run_network_ids_protocol_anomaly(nlf)
+
+    elif s == "network_ids_unknown_high":
+        run_network_ids_unknown_high(nlf)
+
+    elif s == "network_ids_c2_with_egress":
+        run_network_ids_c2_with_egress(args.count, nlf)
+
+    elif s == "network_ids_scan_with_recon":
+        run_network_ids_scan_with_recon(args.count, nlf)
+
+    elif s == "network_ids_exfil_with_dns":
+        run_network_ids_exfil_with_dns(args.count, nlf)
+
+    elif s == "network_ids_exploit_with_web":
+        run_network_ids_exploit_with_web(args.count, nlf, wlf)
+
+    elif s == "network_ids_credential_with_auth":
+        run_network_ids_credential_with_auth(args.count, nlf, lf, args.user)
 
     # ── Pure attack-only (SSH/sudo) ───────────────────────────────────────────
     elif s == "ssh_bruteforce":

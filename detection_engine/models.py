@@ -99,6 +99,9 @@ class Event:
     # ES document identity — REQUIRED for dedup / checkpoint
     es_doc_id: str
     es_index: str
+    mitre_id: Optional[str] = None
+    mitre_tactic: Optional[str] = None
+    mitre_technique: Optional[str] = None
 
 
 # ── Timestamp parser ──────────────────────────────────────────────────────────

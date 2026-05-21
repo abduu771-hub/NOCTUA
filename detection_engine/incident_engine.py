@@ -144,6 +144,60 @@ _MAX_MITRE_IDS  = 20
 # Mirrors Wazuh's frequency="6" pattern on repeated low-severity signals.
 _EGRESS_TO_C2_REPEAT_THRESHOLD = 5
 
+# ---------------------------------------------------------------------------
+# IDS (Suricata) rule classification — maps Suricata categories processed
+# by Logstash → rule_engine.py → alert_builder.py into SIEM-AI rule IDs.
+#
+# Wazuh equivalent: each IDS rule group (ids,suricata,malware, etc.)
+# produces a parent alert that feeds into incident correlation.
+# ---------------------------------------------------------------------------
+
+IDS_RULE_IDS = {
+    "network_ids_malware",
+    "network_ids_c2",
+    "network_ids_exploit",
+    "network_ids_scan_recon",
+    "network_ids_credential",
+    "network_ids_exfiltration",
+    "network_ids_policy",
+    "network_ids_protocol_anomaly",
+    "network_ids_unknown_high",
+}
+
+# Bounded evidence list sizes for IDS incidents — keeps ES docs lean
+_MAX_IDS_RULE_IDS        = 30
+_MAX_IDS_RULE_NAMES      = 30
+_MAX_IDS_CATEGORIES      = 20
+_MAX_IDS_TAGS            = 30
+_MAX_IDS_CORR_REASONS    = 20
+_MAX_IDS_SEVERITY_LABELS = 15
+
+# IDS rule → compact story key (machine-readable, used in grouping keys)
+_IDS_STORY_KEYS = {
+    "network_ids_malware":          "malware",
+    "network_ids_c2":               "c2",
+    "network_ids_exploit":          "exploit",
+    "network_ids_scan_recon":       "recon",
+    "network_ids_credential":       "credential",
+    "network_ids_exfiltration":     "exfiltration",
+    "network_ids_policy":           "policy",
+    "network_ids_protocol_anomaly": "protocol_anomaly",
+    "network_ids_unknown_high":     "unknown_high",
+}
+
+# Default severity for IDS standalone incidents
+_IDS_DEFAULT_SEVERITY = {
+    "network_ids_malware":          "HIGH",
+    "network_ids_c2":               "CRITICAL",
+    "network_ids_exploit":          "HIGH",
+    "network_ids_scan_recon":       "MEDIUM",
+    "network_ids_credential":       "HIGH",
+    "network_ids_exfiltration":     "CRITICAL",
+    "network_ids_policy":           "MEDIUM",
+    "network_ids_protocol_anomaly": "MEDIUM",
+    "network_ids_unknown_high":     "HIGH",
+}
+
 
 class IncidentEngine:
     INCIDENT_INDEX_PREFIX = "siem-incidents"
@@ -181,6 +235,20 @@ class IncidentEngine:
         "network_suspicious_outbound": "Suspicious Network Egress",
         "network_c2_beaconing":        "Possible Command and Control",
         "network_suspicious_dns":      "Suspicious DNS / Malware Staging",
+        # ----------------------------------------------------------------
+        # IDS (Suricata) — standalone IDS incident types.
+        # Each IDS rule produces its own incident type AND may update
+        # existing behavioral incidents (dual-effect design).
+        # ----------------------------------------------------------------
+        "network_ids_malware":          "IDS / Malware Network Activity",
+        "network_ids_c2":               "IDS / Command and Control",
+        "network_ids_exploit":          "IDS / Exploit Attempt",
+        "network_ids_scan_recon":       "IDS / Network Reconnaissance",
+        "network_ids_credential":       "IDS / Credential Attack",
+        "network_ids_exfiltration":     "IDS / Possible Data Exfiltration",
+        "network_ids_policy":           "IDS / Network Policy Violation",
+        "network_ids_protocol_anomaly": "IDS / Protocol Anomaly",
+        "network_ids_unknown_high":     "IDS / High-Severity Unknown Alert",
     }
 
     # Multi-vector type — assigned when 2+ distinct web rule IDs seen (Wazuh-style correlation)
@@ -191,6 +259,23 @@ class IncidentEngine:
     NETWORK_STORY_EGRESS = "Suspicious Network Egress"
     NETWORK_STORY_C2     = "Possible Command and Control"
     NETWORK_STORY_DNS    = "Suspicious DNS / Malware Staging"
+
+    # IDS standalone incident story types — used for type checking and queries
+    IDS_STORY_MALWARE    = "IDS / Malware Network Activity"
+    IDS_STORY_C2         = "IDS / Command and Control"
+    IDS_STORY_EXPLOIT    = "IDS / Exploit Attempt"
+    IDS_STORY_RECON      = "IDS / Network Reconnaissance"
+    IDS_STORY_CREDENTIAL = "IDS / Credential Attack"
+    IDS_STORY_EXFIL      = "IDS / Possible Data Exfiltration"
+    IDS_STORY_POLICY     = "IDS / Network Policy Violation"
+    IDS_STORY_PROTO_ANOM = "IDS / Protocol Anomaly"
+    IDS_STORY_UNKNOWN    = "IDS / High-Severity Unknown Alert"
+
+    IDS_ALL_STORY_TYPES = {
+        IDS_STORY_MALWARE, IDS_STORY_C2, IDS_STORY_EXPLOIT,
+        IDS_STORY_RECON, IDS_STORY_CREDENTIAL, IDS_STORY_EXFIL,
+        IDS_STORY_POLICY, IDS_STORY_PROTO_ANOM, IDS_STORY_UNKNOWN,
+    }
 
     ESCALATABLE_TYPES = {
         "brute_force_attack",
@@ -317,6 +402,47 @@ class IncidentEngine:
             "incident_inactivity_timeout": 30 * 60,   # 30 min
             "cooldown_window": 15,
         },
+        # ----------------------------------------------------------------
+        # IDS (Suricata) rules — cooldown and inactivity timeouts.
+        # C2/malware: long life (confirmed threats persist).
+        # Scan/policy/anomaly: medium life (noisy, moderate lifespan).
+        # ----------------------------------------------------------------
+        "network_ids_malware": {
+            "incident_inactivity_timeout": 60 * 60,   # 60 min
+            "cooldown_window": 30,
+        },
+        "network_ids_c2": {
+            "incident_inactivity_timeout": 60 * 60,   # 60 min
+            "cooldown_window": 30,
+        },
+        "network_ids_exploit": {
+            "incident_inactivity_timeout": 30 * 60,   # 30 min
+            "cooldown_window": 20,
+        },
+        "network_ids_scan_recon": {
+            "incident_inactivity_timeout": 20 * 60,   # 20 min
+            "cooldown_window": 15,
+        },
+        "network_ids_credential": {
+            "incident_inactivity_timeout": 30 * 60,   # 30 min
+            "cooldown_window": 15,
+        },
+        "network_ids_exfiltration": {
+            "incident_inactivity_timeout": 45 * 60,   # 45 min
+            "cooldown_window": 30,
+        },
+        "network_ids_policy": {
+            "incident_inactivity_timeout": 20 * 60,   # 20 min
+            "cooldown_window": 20,
+        },
+        "network_ids_protocol_anomaly": {
+            "incident_inactivity_timeout": 20 * 60,   # 20 min
+            "cooldown_window": 20,
+        },
+        "network_ids_unknown_high": {
+            "incident_inactivity_timeout": 30 * 60,   # 30 min
+            "cooldown_window": 20,
+        },
     }
 
     USER_BASED_RULES = {
@@ -354,6 +480,15 @@ class IncidentEngine:
         # ----------------------------------------------------------------
         if rule_id in NETWORK_ALL_RULES:
             self._process_network_alert(alert, rule_id)
+            self._auto_close_incidents()
+            return
+
+        # ----------------------------------------------------------------
+        # IDS alerts: route to dedicated IDS incident handler.
+        # Dual-effect: standalone IDS incident + behavioral correlation.
+        # ----------------------------------------------------------------
+        if rule_id in IDS_RULE_IDS:
+            self._process_ids_alert(alert, rule_id)
             self._auto_close_incidents()
             return
 
@@ -1272,6 +1407,1324 @@ class IncidentEngine:
                 return val
         return None
 
+
+    # =========================================================================
+    # IDS INCIDENT ENGINE
+    # =========================================================================
+    #
+    # Dual-effect design:
+    #   Effect A — create/update standalone IDS incidents.
+    #   Effect B — correlate IDS evidence into compatible behavioral incidents.
+    #
+    # IDS alerts are already categorized by Logstash and routed by rule_engine.py.
+    # This section never parses raw logs or Suricata signatures.
+    # =========================================================================
+
+    def _process_ids_alert(self, alert: dict, rule_id: str) -> None:
+        """
+        Main router for all Suricata IDS alerts.
+
+        Creates/updates a standalone IDS incident and then correlates the same
+        IDS evidence into compatible behavioral incidents when an open match
+        exists for the same source identity.
+        """
+        now = self._utcnow()
+        ts = self._parse_ts(self._field(alert, "@timestamp")) or now
+
+        source_ip = self._extract_network_source_ip(alert)
+        if not source_ip:
+            log.warning("IDS incident skipped: no source_ip extractable for rule=%s", rule_id)
+            return
+
+        story_type, story_key = self._resolve_ids_story(rule_id)
+        grouping_key = self._build_ids_grouping_key(
+            alert=alert,
+            rule_id=rule_id,
+            source_ip=source_ip,
+        )
+
+        if not grouping_key:
+            log.warning(
+                "IDS incident skipped: missing grouping fields for rule=%s src=%s",
+                rule_id,
+                source_ip,
+            )
+            return
+
+        existing = self._find_open_incident_by_key(grouping_key)
+
+        if existing:
+            self._update_ids_incident(
+                hit=existing,
+                alert=alert,
+                rule_id=rule_id,
+                story_type=story_type,
+                grouping_key=grouping_key,
+                ts=ts,
+                now=now,
+            )
+        else:
+            existing_retry = self._find_open_incident_by_key(grouping_key)
+            if existing_retry:
+                self._update_ids_incident(
+                    hit=existing_retry,
+                    alert=alert,
+                    rule_id=rule_id,
+                    story_type=story_type,
+                    grouping_key=grouping_key,
+                    ts=ts,
+                    now=now,
+                )
+            else:
+                self._create_ids_incident(
+                    alert=alert,
+                    rule_id=rule_id,
+                    story_type=story_type,
+                    grouping_key=grouping_key,
+                    source_ip=source_ip,
+                    ts=ts,
+                    now=now,
+                )
+
+        self._correlate_ids_with_behavioral_incidents(
+            alert=alert,
+            rule_id=rule_id,
+            source_ip=source_ip,
+            ts=ts,
+            now=now,
+        )
+
+    def _resolve_ids_story(self, rule_id: str) -> tuple[str, str]:
+        """
+        Return the standalone IDS incident type and compact IDS story key.
+        """
+        story_type = self.RULE_TO_INCIDENT_TYPE.get(
+            rule_id,
+            self.IDS_STORY_UNKNOWN,
+        )
+        story_key = _IDS_STORY_KEYS.get(rule_id, "unknown_high")
+        return story_type, story_key
+
+    def _build_ids_grouping_key(
+        self,
+        alert: dict,
+        rule_id: str,
+        source_ip: str,
+    ) -> Optional[str]:
+        """
+        IDS standalone grouping:
+            ids::<story>::src::<source_ip>::sig::<suricata_signature_id>
+
+        If Suricata signature ID is absent, fall back to SIEM-AI rule_id so
+        the incident can still be grouped without inserting fake values.
+        """
+        if not source_ip:
+            return None
+
+        _, story_key = self._resolve_ids_story(rule_id)
+        ids_rule_id = self._extract_ids_rule_id(alert) or rule_id
+
+        if not ids_rule_id:
+            return None
+
+        return f"ids::{story_key}::src::{source_ip}::sig::{ids_rule_id}"
+
+    def _create_ids_incident(
+        self,
+        alert: dict,
+        rule_id: str,
+        story_type: str,
+        grouping_key: str,
+        source_ip: str,
+        ts: datetime,
+        now: datetime,
+    ) -> None:
+        """
+        Create a standalone IDS incident document.
+        """
+        incident_id = hashlib.sha1(grouping_key.encode()).hexdigest()[:16]
+
+        severity = self._compute_ids_severity(rule_id, alert=alert)
+        destination = self._extract_network_destination(alert)
+
+        attack_ctx = self._build_initial_ids_attack_context(
+            alert=alert,
+            rule_id=rule_id,
+            story_type=story_type,
+            source_ip=source_ip,
+            ts=ts,
+        )
+
+        doc = {
+            "incident": {
+                "id": incident_id,
+                "version": 1,
+                "type": story_type,
+                "status": "open",
+                "severity": severity,
+                "first_seen": self._fmt_ts(ts),
+                "last_seen": self._fmt_ts(ts),
+                "alert_count": 1,
+                "grouping_key": grouping_key,
+            },
+            "source": {
+                "ip": source_ip,
+            },
+            "destination": {
+                k: v for k, v in destination.items() if v is not None
+            },
+            "network": {
+                k: v
+                for k, v in {
+                    "transport": self._field(alert, "network.transport"),
+                    "protocol": self._field(alert, "network.protocol"),
+                }.items()
+                if v is not None
+            },
+            "attack_context": attack_ctx,
+            "related": {
+                "alert_ids": self._alert_ids_from_alert(alert),
+                "rule_ids": [rule_id],
+                "ids_rule_ids": (
+                    [self._extract_ids_rule_id(alert)]
+                    if self._extract_ids_rule_id(alert)
+                    else []
+                ),
+            },
+            "created_at": self._fmt_ts(now),
+            "updated_at": self._fmt_ts(now),
+        }
+
+        self.es.index(
+            index=self._index_name(now),
+            id=incident_id,
+            body=doc,
+            refresh="wait_for",
+        )
+
+        log.info(
+            "🆕 IDS INCIDENT CREATED [OPEN] type=%s severity=%s src=%s key=%s rule=%s sig=%s",
+            story_type,
+            severity,
+            source_ip,
+            grouping_key,
+            rule_id,
+            self._extract_ids_rule_id(alert) or self._extract_ids_signature(alert),
+        )
+
+    def _update_ids_incident(
+        self,
+        hit: dict,
+        alert: dict,
+        rule_id: str,
+        story_type: str,
+        grouping_key: str,
+        ts: datetime,
+        now: datetime,
+    ) -> None:
+        """
+        Update a standalone IDS incident with cooldown protection.
+
+        Cooldown is bypassed for genuinely new IDS evidence:
+          - new SIEM-AI IDS rule ID
+          - new Suricata signature ID
+          - severity increase
+        """
+        src = hit["_source"]
+        incident = src["incident"]
+
+        if "attack_context" not in src or not isinstance(src["attack_context"], dict):
+            src["attack_context"] = {}
+
+        ctx = src["attack_context"]
+        self._ensure_ids_attack_context(ctx)
+
+        last_seen = self._parse_ts(incident.get("last_seen")) or now
+        cooldown = self.WINDOWS.get(rule_id, {}).get("cooldown_window", 20)
+        elapsed = (now - last_seen).total_seconds()
+
+        existing_rule_ids = set(src.get("related", {}).get("rule_ids", []))
+        existing_ids_rule_ids = set(src.get("related", {}).get("ids_rule_ids", []))
+        existing_ids_rule_ids.update(ctx.get("ids_rule_ids_seen") or [])
+
+        incoming_ids_rule_id = self._extract_ids_rule_id(alert)
+
+        current_severity = incident.get("severity", "MEDIUM")
+        new_severity = self._compute_ids_severity(rule_id, alert=alert, ctx=ctx)
+
+        is_new_rule_id = rule_id not in existing_rule_ids
+        is_new_ids_rule_id = bool(
+            incoming_ids_rule_id and incoming_ids_rule_id not in existing_ids_rule_ids
+        )
+        severity_increases = self._severity_rank(new_severity) > self._severity_rank(
+            current_severity
+        )
+
+        bypass_cooldown = is_new_rule_id or is_new_ids_rule_id or severity_increases
+
+        if not bypass_cooldown and elapsed < cooldown:
+            log.warning(
+                "⏸️ IDS INCIDENT SKIPPED DUE TO COOLDOWN rule=%s key=%s elapsed=%.1fs cooldown=%ss sig=%s",
+                rule_id,
+                grouping_key,
+                elapsed,
+                int(cooldown),
+                incoming_ids_rule_id or self._extract_ids_signature(alert),
+            )
+            return
+
+        self._enrich_ids_context_from_alert(alert, rule_id, ctx, ts)
+
+        incident["type"] = story_type
+        incident["severity"] = self._compute_ids_severity(rule_id, alert=alert, ctx=ctx)
+        incident["version"] = incident.get("version", 1) + 1
+        incident["alert_count"] = incident.get("alert_count", 0) + 1
+        incident["last_seen"] = self._fmt_ts(ts)
+
+        source_ip = self._extract_network_source_ip(alert)
+        if source_ip:
+            src.setdefault("source", {})
+            src["source"]["ip"] = source_ip
+
+        destination = self._extract_network_destination(alert)
+        if destination:
+            src.setdefault("destination", {})
+            src["destination"].update(destination)
+
+        network_updates = {
+            "transport": self._field(alert, "network.transport"),
+            "protocol": self._field(alert, "network.protocol"),
+        }
+        clean_network_updates = {
+            k: v for k, v in network_updates.items() if v is not None
+        }
+        if clean_network_updates:
+            src.setdefault("network", {})
+            src["network"].update(clean_network_updates)
+
+        src.setdefault("related", {})
+        src["related"].setdefault("alert_ids", [])
+        src["related"].setdefault("rule_ids", [])
+        src["related"].setdefault("ids_rule_ids", [])
+
+        src["related"]["alert_ids"] = list(
+            set(src["related"]["alert_ids"] + self._alert_ids_from_alert(alert))
+        )
+
+        if rule_id not in src["related"]["rule_ids"]:
+            src["related"]["rule_ids"].append(rule_id)
+
+        if incoming_ids_rule_id and incoming_ids_rule_id not in src["related"]["ids_rule_ids"]:
+            src["related"]["ids_rule_ids"].append(incoming_ids_rule_id)
+
+        src["updated_at"] = self._fmt_ts(now)
+
+        self._save(hit, src)
+
+        log.info(
+            "🔄 IDS INCIDENT UPDATED key=%s type=%s severity=%s alerts=%s rule=%s sig=%s",
+            grouping_key,
+            incident.get("type", story_type),
+            incident.get("severity", "?"),
+            incident.get("alert_count", 0),
+            rule_id,
+            incoming_ids_rule_id or self._extract_ids_signature(alert),
+        )
+
+    def _build_initial_ids_attack_context(
+        self,
+        alert: dict,
+        rule_id: str,
+        story_type: str,
+        source_ip: str,
+        ts: datetime,
+    ) -> dict:
+        """
+        Construct the first IDS attack_context document.
+        """
+        ts_str = self._fmt_ts(ts)
+        _, story_key = self._resolve_ids_story(rule_id)
+
+        ctx: dict[str, Any] = {
+            "layer": "network",
+            "source": "suricata_ids",
+            "ids_story": story_key,
+            "source_ip": source_ip,
+            "ids_rule_ids_seen": [],
+            "ids_rule_names_seen": [],
+            "ids_rule_categories_seen": [],
+            "ids_severity_labels_seen": [],
+            "ids_tags_seen": [],
+            "ids_correlation_reasons": [],
+            "destination_ips_seen": [],
+            "destination_ports_seen": [],
+            "first_seen": ts_str,
+            "last_seen": ts_str,
+            "alert_count": 0,
+            "users_seen": [],
+            "source_ips_seen": [source_ip] if source_ip else [],
+            "hosts_seen": [],
+            "primary_user": None,
+            "compromised_user": None,
+            "grouping_strategy": "ids_source_signature",
+        }
+
+        self._enrich_ids_context_from_alert(alert, rule_id, ctx, ts)
+        return ctx
+
+    def _ensure_ids_attack_context(self, ctx: dict) -> None:
+        """
+        Upgrade-safe initialization for IDS attack_context.
+        """
+        ctx.setdefault("layer", "network")
+        ctx.setdefault("source", "suricata_ids")
+        ctx.setdefault("ids_story", "unknown_high")
+        ctx.setdefault("source_ip", None)
+        ctx.setdefault("ids_rule_ids_seen", [])
+        ctx.setdefault("ids_rule_names_seen", [])
+        ctx.setdefault("ids_rule_categories_seen", [])
+        ctx.setdefault("ids_severity_labels_seen", [])
+        ctx.setdefault("ids_tags_seen", [])
+        ctx.setdefault("ids_correlation_reasons", [])
+        ctx.setdefault("destination_ips_seen", [])
+        ctx.setdefault("destination_ports_seen", [])
+        ctx.setdefault("first_seen", None)
+        ctx.setdefault("last_seen", None)
+        ctx.setdefault("alert_count", 0)
+        ctx.setdefault("users_seen", [])
+        ctx.setdefault("source_ips_seen", [])
+        ctx.setdefault("hosts_seen", [])
+        ctx.setdefault("primary_user", None)
+        ctx.setdefault("compromised_user", None)
+        ctx.setdefault("grouping_strategy", "ids_source_signature")
+
+    def _enrich_ids_context_from_alert(
+        self,
+        alert: dict,
+        rule_id: str,
+        ctx: dict,
+        ts: datetime,
+    ) -> None:
+        """
+        Merge IDS evidence from one alert into attack_context.
+        """
+        self._ensure_ids_attack_context(ctx)
+
+        ts_str = self._fmt_ts(ts)
+        if not ctx.get("first_seen"):
+            ctx["first_seen"] = ts_str
+        ctx["last_seen"] = ts_str
+        ctx["alert_count"] = ctx.get("alert_count", 0) + 1
+
+        _, story_key = self._resolve_ids_story(rule_id)
+        ctx["ids_story"] = story_key
+
+        source_ip = self._extract_network_source_ip(alert)
+        if source_ip:
+            ctx["source_ip"] = ctx.get("source_ip") or source_ip
+            ctx["source_ips_seen"] = self._bounded_merge(
+                ctx.get("source_ips_seen"),
+                [source_ip],
+                _MAX_DEST_IPS,
+            )
+
+        ids_rule_id = self._extract_ids_rule_id(alert)
+        ids_rule_name = self._extract_ids_rule_name(alert)
+        ids_rule_category = self._extract_ids_rule_category(alert)
+        ids_signature = self._extract_ids_signature(alert)
+        ids_severity_label = self._extract_field_priority(
+            alert,
+            "ids.severity_label",
+            "attack_context.ids_severity_label",
+        )
+        ids_tags = self._extract_ids_tags(alert)
+
+        ctx["ids_rule_ids_seen"] = self._bounded_merge(
+            ctx.get("ids_rule_ids_seen"),
+            [ids_rule_id],
+            _MAX_IDS_RULE_IDS,
+        )
+        ctx["ids_rule_names_seen"] = self._bounded_merge(
+            ctx.get("ids_rule_names_seen"),
+            [ids_rule_name, ids_signature],
+            _MAX_IDS_RULE_NAMES,
+        )
+        ctx["ids_rule_categories_seen"] = self._bounded_merge(
+            ctx.get("ids_rule_categories_seen"),
+            [ids_rule_category],
+            _MAX_IDS_CATEGORIES,
+        )
+        ctx["ids_severity_labels_seen"] = self._bounded_merge(
+            ctx.get("ids_severity_labels_seen"),
+            [ids_severity_label],
+            _MAX_IDS_SEVERITY_LABELS,
+        )
+        ctx["ids_tags_seen"] = self._bounded_merge(
+            ctx.get("ids_tags_seen"),
+            ids_tags,
+            _MAX_IDS_TAGS,
+        )
+
+        dest_ip = self._extract_field_priority(
+            alert,
+            "destination.ip",
+            "attack_context.destination_ip",
+        )
+        if dest_ip:
+            ctx["destination_ips_seen"] = self._bounded_merge(
+                ctx.get("destination_ips_seen"),
+                [dest_ip],
+                _MAX_DEST_IPS,
+            )
+
+        dest_port = self._extract_field_priority(
+            alert,
+            "destination.port",
+            "attack_context.destination_port",
+        )
+        if dest_port is not None:
+            ctx["destination_ports_seen"] = self._bounded_merge(
+                ctx.get("destination_ports_seen"),
+                [str(dest_port)],
+                _MAX_DEST_PORTS,
+            )
+
+        for field_key, ctx_key in (
+            ("network.transport", "network_transport"),
+            ("network.protocol", "network_protocol"),
+            ("event.dataset", "event_dataset"),
+            ("event.action", "event_action"),
+            ("event.severity", "ids_severity"),
+            ("ids.severity", "ids_severity"),
+            ("ids.alert_action", "ids_alert_action"),
+        ):
+            val = self._field(alert, field_key)
+            if val is not None:
+                ctx[ctx_key] = val
+
+    def _compute_ids_severity(
+        self,
+        rule_id: str,
+        alert: Optional[dict] = None,
+        ctx: Optional[dict] = None,
+    ) -> str:
+        """
+        Compute standalone IDS incident severity.
+
+        SIEM-AI severity is based on the IDS story/category. Suricata numeric
+        severity is retained as evidence and never blindly replaces this model.
+        """
+        rule_ids_seen = set()
+
+        if ctx:
+            rule_ids_seen.update(ctx.get("ids_siem_rule_ids_seen") or [])
+            # Compatibility: related.rule_ids may not live in ctx, so infer
+            # from IDS story evidence where possible.
+            stories = set(ctx.get("ids_rule_categories_seen") or [])
+            tags = set(ctx.get("ids_tags_seen") or [])
+
+            if "ids_malware" in tags:
+                rule_ids_seen.add("network_ids_malware")
+            if "ids_c2" in tags:
+                rule_ids_seen.add("network_ids_c2")
+            if "ids_exfiltration" in tags:
+                rule_ids_seen.add("network_ids_exfiltration")
+            if "ids_exploit" in tags:
+                rule_ids_seen.add("network_ids_exploit")
+            if stories:
+                pass
+
+        rule_ids_seen.add(rule_id)
+
+        if (
+            "network_ids_c2" in rule_ids_seen
+            and "network_ids_malware" in rule_ids_seen
+        ):
+            return "CRITICAL"
+
+        if "network_ids_exfiltration" in rule_ids_seen:
+            return "CRITICAL"
+
+        if "network_ids_c2" in rule_ids_seen:
+            return "CRITICAL"
+
+        if "network_ids_malware" in rule_ids_seen:
+            return "HIGH"
+
+        if "network_ids_exploit" in rule_ids_seen:
+            return "HIGH"
+
+        if "network_ids_credential" in rule_ids_seen:
+            return "HIGH"
+
+        if "network_ids_unknown_high" in rule_ids_seen:
+            return "HIGH"
+
+        return _IDS_DEFAULT_SEVERITY.get(rule_id, "MEDIUM")
+
+    def _extract_ids_rule_id(self, alert: dict) -> Optional[str]:
+        return self._clean_value(
+            self._extract_field_priority(
+                alert,
+                "ids.rule_id",
+                "attack_context.ids_rule_id",
+                "suricata.alert.signature_id",
+            )
+        )
+
+    def _extract_ids_rule_name(self, alert: dict) -> Optional[str]:
+        return self._clean_value(
+            self._extract_field_priority(
+                alert,
+                "ids.rule_name",
+                "attack_context.ids_rule_name",
+            )
+        )
+
+    def _extract_ids_rule_category(self, alert: dict) -> Optional[str]:
+        return self._clean_value(
+            self._extract_field_priority(
+                alert,
+                "ids.rule_category",
+                "attack_context.ids_rule_category",
+                "suricata.alert.category",
+            )
+        )
+
+    def _extract_ids_signature(self, alert: dict) -> Optional[str]:
+        return self._clean_value(
+            self._extract_field_priority(
+                alert,
+                "ids.alert_signature",
+                "attack_context.ids_alert_signature",
+                "suricata.alert.signature",
+                "ids.rule_name",
+            )
+        )
+
+    def _extract_ids_tags(self, alert: dict) -> list[str]:
+        tags = self._field(alert, "tags")
+        if not tags:
+            tags = self._field(alert, "attack_context.tags")
+
+        if not tags:
+            return []
+
+        if isinstance(tags, str):
+            clean = self._clean_value(tags)
+            return [clean] if clean else []
+
+        result: list[str] = []
+        try:
+            for tag in tags:
+                clean = self._clean_value(tag)
+                if clean and clean not in result:
+                    result.append(clean)
+        except TypeError:
+            return []
+
+        return result
+
+    def _correlate_ids_with_behavioral_incidents(
+        self,
+        alert: dict,
+        rule_id: str,
+        source_ip: str,
+        ts: datetime,
+        now: datetime,
+    ) -> None:
+        """
+        Add IDS evidence to compatible open behavioral incidents.
+
+        Standalone IDS incidents are always handled separately before this.
+        This method only enriches existing behavioral incidents when they exist.
+        """
+        if rule_id == "network_ids_scan_recon":
+            hit = self._find_open_incident_by_type_and_source(
+                self.NETWORK_STORY_RECON,
+                source_ip,
+            )
+            if hit:
+                self._update_behavioral_incident_with_ids_evidence(
+                    hit=hit,
+                    alert=alert,
+                    rule_id=rule_id,
+                    reason="ids_scan_recon_confirms_behavioral_recon",
+                    ts=ts,
+                    now=now,
+                )
+            return
+
+        if rule_id == "network_ids_c2":
+            c2_hit = self._find_open_incident_by_type_and_source(
+                self.NETWORK_STORY_C2,
+                source_ip,
+            )
+            if c2_hit:
+                self._update_behavioral_incident_with_ids_evidence(
+                    hit=c2_hit,
+                    alert=alert,
+                    rule_id=rule_id,
+                    reason="ids_c2_confirms_behavioral_c2",
+                    ts=ts,
+                    now=now,
+                )
+                return
+
+            egress_hit = self._find_open_incident_by_type_and_source(
+                self.NETWORK_STORY_EGRESS,
+                source_ip,
+            )
+            if egress_hit:
+                self._update_behavioral_incident_with_ids_evidence(
+                    hit=egress_hit,
+                    alert=alert,
+                    rule_id=rule_id,
+                    reason="ids_c2_promotes_egress_to_c2",
+                    ts=ts,
+                    now=now,
+                    promote_to_type=self.NETWORK_STORY_C2,
+                )
+                return
+
+            dns_hit = self._find_open_incident_by_type_and_source(
+                self.NETWORK_STORY_DNS,
+                source_ip,
+            )
+            if dns_hit:
+                self._update_behavioral_incident_with_ids_evidence(
+                    hit=dns_hit,
+                    alert=alert,
+                    rule_id=rule_id,
+                    reason="ids_c2_promotes_dns_to_c2",
+                    ts=ts,
+                    now=now,
+                    promote_to_type=self.NETWORK_STORY_C2,
+                )
+            return
+
+        if rule_id == "network_ids_malware":
+            c2_hit = self._find_open_incident_by_type_and_source(
+                self.NETWORK_STORY_C2,
+                source_ip,
+            )
+            if c2_hit:
+                self._update_behavioral_incident_with_ids_evidence(
+                    hit=c2_hit,
+                    alert=alert,
+                    rule_id=rule_id,
+                    reason="ids_malware_confirms_c2",
+                    ts=ts,
+                    now=now,
+                )
+                return
+
+            egress_hit = self._find_open_incident_by_type_and_source(
+                self.NETWORK_STORY_EGRESS,
+                source_ip,
+            )
+            if egress_hit:
+                self._update_behavioral_incident_with_ids_evidence(
+                    hit=egress_hit,
+                    alert=alert,
+                    rule_id=rule_id,
+                    reason="ids_malware_promotes_egress",
+                    ts=ts,
+                    now=now,
+                    promote_to_type=self.NETWORK_STORY_C2,
+                )
+                return
+
+            dns_hit = self._find_open_incident_by_type_and_source(
+                self.NETWORK_STORY_DNS,
+                source_ip,
+            )
+            if dns_hit:
+                self._update_behavioral_incident_with_ids_evidence(
+                    hit=dns_hit,
+                    alert=alert,
+                    rule_id=rule_id,
+                    reason="ids_malware_confirms_dns_staging",
+                    ts=ts,
+                    now=now,
+                )
+            return
+
+        if rule_id == "network_ids_exploit":
+            recon_hit = self._find_open_incident_by_type_and_source(
+                self.NETWORK_STORY_RECON,
+                source_ip,
+            )
+            if recon_hit:
+                self._update_behavioral_incident_with_ids_evidence(
+                    hit=recon_hit,
+                    alert=alert,
+                    rule_id=rule_id,
+                    reason="ids_exploit_after_recon",
+                    ts=ts,
+                    now=now,
+                )
+
+            web_hit = self._find_open_web_incident_by_source_or_destination(alert)
+            if web_hit:
+                self._update_behavioral_incident_with_ids_evidence(
+                    hit=web_hit,
+                    alert=alert,
+                    rule_id=rule_id,
+                    reason="ids_exploit_confirms_web_attack",
+                    ts=ts,
+                    now=now,
+                )
+            return
+
+        if rule_id == "network_ids_exfiltration":
+            for incident_type, reason in (
+                (self.NETWORK_STORY_EGRESS, "ids_exfiltration_confirms_egress"),
+                (self.NETWORK_STORY_DNS, "ids_exfiltration_confirms_dns_tunneling"),
+                (self.NETWORK_STORY_C2, "ids_exfiltration_supports_c2"),
+            ):
+                hit = self._find_open_incident_by_type_and_source(incident_type, source_ip)
+                if hit:
+                    self._update_behavioral_incident_with_ids_evidence(
+                        hit=hit,
+                        alert=alert,
+                        rule_id=rule_id,
+                        reason=reason,
+                        ts=ts,
+                        now=now,
+                    )
+            return
+
+        if rule_id == "network_ids_credential":
+            auth_hit = self._find_open_auth_incident_for_ids(alert)
+            if auth_hit:
+                incident_type = auth_hit.get("_source", {}).get("incident", {}).get("type")
+                if incident_type == "account_compromise":
+                    reason = "ids_credential_confirms_account_compromise"
+                elif incident_type == "password_spray_attack":
+                    reason = "ids_credential_confirms_password_spray"
+                else:
+                    reason = "ids_credential_confirms_bruteforce"
+
+                self._update_behavioral_incident_with_ids_evidence(
+                    hit=auth_hit,
+                    alert=alert,
+                    rule_id=rule_id,
+                    reason=reason,
+                    ts=ts,
+                    now=now,
+                )
+            return
+
+        if rule_id == "network_ids_policy":
+            for incident_type, reason in (
+                (self.NETWORK_STORY_EGRESS, "ids_policy_confirms_suspicious_egress"),
+                (self.NETWORK_STORY_C2, "ids_policy_supports_c2"),
+            ):
+                hit = self._find_open_incident_by_type_and_source(incident_type, source_ip)
+                if hit:
+                    self._update_behavioral_incident_with_ids_evidence(
+                        hit=hit,
+                        alert=alert,
+                        rule_id=rule_id,
+                        reason=reason,
+                        ts=ts,
+                        now=now,
+                    )
+                    return
+            return
+
+        if rule_id == "network_ids_protocol_anomaly":
+            for incident_type, reason in (
+                (self.NETWORK_STORY_EGRESS, "ids_protocol_anomaly_supports_egress"),
+                (self.NETWORK_STORY_C2, "ids_protocol_anomaly_supports_c2"),
+                (self.IDS_STORY_EXPLOIT, "ids_protocol_anomaly_supports_exploit"),
+            ):
+                hit = self._find_open_incident_by_type_and_source(incident_type, source_ip)
+                if hit:
+                    self._update_behavioral_incident_with_ids_evidence(
+                        hit=hit,
+                        alert=alert,
+                        rule_id=rule_id,
+                        reason=reason,
+                        ts=ts,
+                        now=now,
+                    )
+                    return
+            return
+
+        if rule_id == "network_ids_unknown_high":
+            hit = self._find_first_open_incident_by_types_and_source(
+                [
+                    self.NETWORK_STORY_C2,
+                    self.NETWORK_STORY_EGRESS,
+                    self.NETWORK_STORY_DNS,
+                    self.NETWORK_STORY_RECON,
+                    self.WEB_MULTI_VECTOR_TYPE,
+                    "Web Attack / SQL Injection",
+                    "Web Attack / Path Traversal",
+                    "Web Attack / XSS",
+                    "Web Attack / Sensitive File Probe",
+                    "account_compromise",
+                    "password_spray_attack",
+                    "distributed_bruteforce_attack",
+                    "targeted_account_attack",
+                    "brute_force_attack",
+                ],
+                source_ip,
+            )
+            if hit:
+                self._update_behavioral_incident_with_ids_evidence(
+                    hit=hit,
+                    alert=alert,
+                    rule_id=rule_id,
+                    reason="ids_unknown_high_supports_existing_incident",
+                    ts=ts,
+                    now=now,
+                )
+
+    def _update_behavioral_incident_with_ids_evidence(
+        self,
+        hit: dict,
+        alert: dict,
+        rule_id: str,
+        reason: str,
+        ts: datetime,
+        now: datetime,
+        promote_to_type: Optional[str] = None,
+    ) -> None:
+        """
+        Merge IDS evidence into an existing behavioral incident.
+        """
+        src = hit["_source"]
+        incident = src["incident"]
+
+        if "attack_context" not in src or not isinstance(src["attack_context"], dict):
+            src["attack_context"] = {}
+
+        ctx = src["attack_context"]
+        self._ensure_behavioral_ids_context(ctx)
+
+        source_ip = self._extract_network_source_ip(alert)
+        ids_rule_id = self._extract_ids_rule_id(alert)
+        ids_signature = self._extract_ids_signature(alert)
+
+        old_type = incident.get("type")
+        old_severity = incident.get("severity", "MEDIUM")
+        new_severity = self._compute_behavioral_ids_severity(
+            existing_type=old_type,
+            rule_id=rule_id,
+            current_severity=old_severity,
+            promote_to_type=promote_to_type,
+        )
+
+        src.setdefault("related", {})
+        src["related"].setdefault("alert_ids", [])
+        src["related"].setdefault("rule_ids", [])
+        src["related"].setdefault("ids_rule_ids", [])
+
+        existing_rule_ids = set(src["related"].get("rule_ids") or [])
+        existing_ids_rule_ids = set(src["related"].get("ids_rule_ids") or [])
+        existing_ids_rule_ids.update(ctx.get("ids_rule_ids_seen") or [])
+
+        is_new_rule_id = rule_id not in existing_rule_ids
+        is_new_ids_rule_id = bool(ids_rule_id and ids_rule_id not in existing_ids_rule_ids)
+        is_story_promotion = bool(promote_to_type and promote_to_type != old_type)
+        severity_increases = self._severity_rank(new_severity) > self._severity_rank(
+            old_severity
+        )
+
+        cooldown = self.WINDOWS.get(rule_id, {}).get("cooldown_window", 20)
+        last_seen = self._parse_ts(incident.get("last_seen")) or now
+        elapsed = (now - last_seen).total_seconds()
+
+        bypass_cooldown = (
+            is_new_rule_id
+            or is_new_ids_rule_id
+            or is_story_promotion
+            or severity_increases
+        )
+
+        if not bypass_cooldown and elapsed < cooldown:
+            log.warning(
+                "⏸️ IDS INCIDENT SKIPPED DUE TO COOLDOWN rule=%s key=%s elapsed=%.1fs cooldown=%ss sig=%s",
+                rule_id,
+                incident.get("grouping_key", ""),
+                elapsed,
+                int(cooldown),
+                ids_rule_id or ids_signature,
+            )
+            return
+
+        self._merge_ids_evidence_into_context(ctx, alert, rule_id, reason, ts)
+
+        if promote_to_type and promote_to_type != old_type:
+            incident["type"] = promote_to_type
+            log.info(
+                "🔥 IDS CORRELATION PROMOTED %s → %s src=%s reason=%s",
+                old_type,
+                promote_to_type,
+                source_ip,
+                reason,
+            )
+
+        incident["severity"] = new_severity
+        incident["version"] = incident.get("version", 1) + 1
+        incident["alert_count"] = incident.get("alert_count", 0) + 1
+        incident["last_seen"] = self._fmt_ts(ts)
+
+        src["related"]["alert_ids"] = list(
+            set(src["related"]["alert_ids"] + self._alert_ids_from_alert(alert))
+        )
+
+        if rule_id not in src["related"]["rule_ids"]:
+            src["related"]["rule_ids"].append(rule_id)
+
+        if ids_rule_id and ids_rule_id not in src["related"]["ids_rule_ids"]:
+            src["related"]["ids_rule_ids"].append(ids_rule_id)
+
+        src["updated_at"] = self._fmt_ts(now)
+
+        self._save(hit, src)
+
+        log.info(
+            "🔗 IDS CORRELATION: %s updated %s src=%s sig=%s reason=%s",
+            rule_id,
+            incident.get("type", old_type),
+            source_ip,
+            ids_rule_id or ids_signature,
+            reason,
+        )
+
+    def _find_open_incident_by_type_and_source(
+        self,
+        incident_type: str,
+        source_ip: str,
+    ) -> Optional[dict]:
+        """
+        Find one open incident by type and source.ip.
+        """
+        if not incident_type or not source_ip:
+            return None
+
+        q = {
+            "size": 1,
+            "query": {
+                "bool": {
+                    "must": [
+                        {"term": {"incident.status.keyword": "open"}},
+                        {"term": {"incident.type.keyword": incident_type}},
+                        {"term": {"source.ip.keyword": source_ip}},
+                    ]
+                }
+            },
+        }
+
+        res = self.es.search(index="siem-incidents-*", body=q)
+        hits = res.get("hits", {}).get("hits", [])
+        return hits[0] if hits else None
+
+    def _find_first_open_incident_by_types_and_source(
+        self,
+        incident_types: list[str],
+        source_ip: str,
+    ) -> Optional[dict]:
+        """
+        Search incident types in priority order and return the first open hit.
+        """
+        for incident_type in incident_types:
+            hit = self._find_open_incident_by_type_and_source(incident_type, source_ip)
+            if hit:
+                return hit
+        return None
+
+    def _find_open_web_incident_by_source_or_destination(
+        self,
+        alert: dict,
+    ) -> Optional[dict]:
+        """
+        Find a compatible open web incident using IDS source/destination context.
+        Defensive: returns None if no clean source/destination is available.
+        """
+        source_ip = self._extract_network_source_ip(alert)
+        destination_ip = self._extract_field_priority(
+            alert,
+            "destination.ip",
+            "attack_context.destination_ip",
+        )
+
+        web_types = [
+            self.WEB_MULTI_VECTOR_TYPE,
+            "Web Attack / SQL Injection",
+            "Web Attack / Path Traversal",
+            "Web Attack / XSS",
+            "Web Attack / Sensitive File Probe",
+            "Web Attack / Reconnaissance",
+        ]
+
+        should_terms = []
+        for ip_value in (source_ip, destination_ip):
+            if ip_value:
+                should_terms.extend(
+                    [
+                        {"term": {"source.ip.keyword": ip_value}},
+                        {"term": {"attack_context.attacker_ip.keyword": ip_value}},
+                        {"term": {"attack_context.source_ip.keyword": ip_value}},
+                    ]
+                )
+
+        if not should_terms:
+            return None
+
+        q = {
+            "size": 1,
+            "query": {
+                "bool": {
+                    "must": [
+                        {"term": {"incident.status.keyword": "open"}},
+                        {"terms": {"incident.type.keyword": web_types}},
+                        {"bool": {"should": should_terms, "minimum_should_match": 1}},
+                    ]
+                }
+            },
+        }
+
+        res = self.es.search(index="siem-incidents-*", body=q)
+        hits = res.get("hits", {}).get("hits", [])
+        return hits[0] if hits else None
+
+    def _find_open_auth_incident_for_ids(self, alert: dict) -> Optional[dict]:
+        """
+        Find a compatible open auth/system incident using source.ip first and
+        user.name as secondary evidence when present.
+        """
+        source_ip = self._extract_network_source_ip(alert)
+        user = self._field(alert, "user.name")
+
+        auth_types = [
+            "account_compromise",
+            "password_spray_attack",
+            "distributed_bruteforce_attack",
+            "targeted_account_attack",
+            "brute_force_attack",
+            "privilege_escalation_attempt",
+        ]
+
+        should_terms = []
+        if source_ip:
+            should_terms.extend(
+                [
+                    {"term": {"source.ip.keyword": source_ip}},
+                    {"term": {"attack_context.source_ip.keyword": source_ip}},
+                    {"term": {"attack_context.source_ips_seen.keyword": source_ip}},
+                ]
+            )
+
+        if user:
+            should_terms.extend(
+                [
+                    {"term": {"user.name.keyword": user}},
+                    {"term": {"attack_context.primary_user.keyword": user}},
+                    {"term": {"attack_context.compromised_user.keyword": user}},
+                    {"term": {"attack_context.users_seen.keyword": user}},
+                ]
+            )
+
+        if not should_terms:
+            return None
+
+        q = {
+            "size": 1,
+            "query": {
+                "bool": {
+                    "must": [
+                        {"term": {"incident.status.keyword": "open"}},
+                        {"terms": {"incident.type.keyword": auth_types}},
+                        {"bool": {"should": should_terms, "minimum_should_match": 1}},
+                    ]
+                }
+            },
+        }
+
+        res = self.es.search(index="siem-incidents-*", body=q)
+        hits = res.get("hits", {}).get("hits", [])
+        return hits[0] if hits else None
+
+    def _ensure_behavioral_ids_context(self, ctx: dict) -> None:
+        """
+        Initialize IDS correlation evidence keys on any existing behavioral
+        attack_context without disturbing its original shape.
+        """
+        ctx.setdefault("ids_confirmed", False)
+        ctx.setdefault("ids_rule_ids_seen", [])
+        ctx.setdefault("ids_rule_names_seen", [])
+        ctx.setdefault("ids_rule_categories_seen", [])
+        ctx.setdefault("ids_severity_labels_seen", [])
+        ctx.setdefault("ids_tags_seen", [])
+        ctx.setdefault("ids_correlation_reasons", [])
+        ctx.setdefault("last_ids_seen", None)
+
+    def _merge_ids_evidence_into_context(
+        self,
+        ctx: dict,
+        alert: dict,
+        rule_id: str,
+        reason: str,
+        ts: datetime,
+    ) -> None:
+        """
+        Merge IDS evidence into an existing behavioral incident context.
+        """
+        self._ensure_behavioral_ids_context(ctx)
+
+        ctx["ids_confirmed"] = True
+        ctx["last_ids_seen"] = self._fmt_ts(ts)
+
+        ids_rule_id = self._extract_ids_rule_id(alert)
+        ids_rule_name = self._extract_ids_rule_name(alert)
+        ids_signature = self._extract_ids_signature(alert)
+        ids_category = self._extract_ids_rule_category(alert)
+        ids_severity_label = self._extract_field_priority(
+            alert,
+            "ids.severity_label",
+            "attack_context.ids_severity_label",
+        )
+
+        ctx["ids_rule_ids_seen"] = self._bounded_merge(
+            ctx.get("ids_rule_ids_seen"),
+            [ids_rule_id],
+            _MAX_IDS_RULE_IDS,
+        )
+        ctx["ids_rule_names_seen"] = self._bounded_merge(
+            ctx.get("ids_rule_names_seen"),
+            [ids_rule_name, ids_signature],
+            _MAX_IDS_RULE_NAMES,
+        )
+        ctx["ids_rule_categories_seen"] = self._bounded_merge(
+            ctx.get("ids_rule_categories_seen"),
+            [ids_category],
+            _MAX_IDS_CATEGORIES,
+        )
+        ctx["ids_severity_labels_seen"] = self._bounded_merge(
+            ctx.get("ids_severity_labels_seen"),
+            [ids_severity_label],
+            _MAX_IDS_SEVERITY_LABELS,
+        )
+        ctx["ids_tags_seen"] = self._bounded_merge(
+            ctx.get("ids_tags_seen"),
+            self._extract_ids_tags(alert),
+            _MAX_IDS_TAGS,
+        )
+        ctx["ids_correlation_reasons"] = self._bounded_merge(
+            ctx.get("ids_correlation_reasons"),
+            [reason],
+            _MAX_IDS_CORR_REASONS,
+        )
+
+    def _compute_behavioral_ids_severity(
+        self,
+        existing_type: Optional[str],
+        rule_id: str,
+        current_severity: str,
+        promote_to_type: Optional[str] = None,
+    ) -> str:
+        """
+        Compute severity when IDS evidence enriches a behavioral incident.
+        """
+        target_type = promote_to_type or existing_type
+        current_rank = self._severity_rank(current_severity)
+
+        if rule_id in {"network_ids_c2", "network_ids_exfiltration"}:
+            candidate = "CRITICAL"
+        elif rule_id == "network_ids_malware" and target_type == self.NETWORK_STORY_C2:
+            candidate = "CRITICAL"
+        elif rule_id == "network_ids_malware":
+            candidate = "HIGH"
+        elif rule_id == "network_ids_exploit" and (
+            target_type == self.WEB_MULTI_VECTOR_TYPE
+            or target_type in {
+                "Web Attack / SQL Injection",
+                "Web Attack / Path Traversal",
+            }
+        ):
+            candidate = "CRITICAL"
+        elif rule_id == "network_ids_exploit":
+            candidate = "HIGH"
+        elif rule_id == "network_ids_scan_recon" and target_type == self.NETWORK_STORY_RECON:
+            candidate = "HIGH"
+        elif rule_id == "network_ids_credential" and target_type == "account_compromise":
+            candidate = "CRITICAL"
+        elif rule_id == "network_ids_credential":
+            candidate = "HIGH"
+        elif rule_id == "network_ids_unknown_high":
+            candidate = "HIGH"
+        else:
+            candidate = current_severity or "MEDIUM"
+
+        return candidate if self._severity_rank(candidate) > current_rank else current_severity
+
+    @staticmethod
+    def _severity_rank(severity: Optional[str]) -> int:
+        return {
+            "LOW": 1,
+            "MEDIUM": 2,
+            "HIGH": 3,
+            "CRITICAL": 4,
+        }.get(str(severity or "").upper(), 0)
+
+    @staticmethod
+    def _clean_value(value: Any) -> Optional[str]:
+        """
+        Return a clean string value or None. Never returns fake placeholders.
+        """
+        if value is None:
+            return None
+
+        cleaned = str(value).strip()
+        if not cleaned:
+            return None
+
+        if cleaned.lower() in {"n/a", "none", "null", "unknown"}:
+            return None
+
+        return cleaned
+
+    def _bounded_merge(
+        self,
+        existing: Any,
+        incoming: Any,
+        max_items: int,
+    ) -> list[str]:
+        """
+        Merge values into a bounded, de-duplicated list while preserving order.
+        """
+        merged: list[str] = []
+
+        def add_one(value: Any) -> None:
+            cleaned = self._clean_value(value)
+            if cleaned and cleaned not in merged:
+                merged.append(cleaned)
+
+        if isinstance(existing, str):
+            add_one(existing)
+        else:
+            try:
+                for value in existing or []:
+                    add_one(value)
+            except TypeError:
+                add_one(existing)
+
+        if isinstance(incoming, str):
+            add_one(incoming)
+        else:
+            try:
+                for value in incoming or []:
+                    add_one(value)
+            except TypeError:
+                add_one(incoming)
+
+        return merged[:max_items]
+
     # =========================================================================
     # CREATE (existing — untouched)
     # =========================================================================
@@ -1865,6 +3318,13 @@ class IncidentEngine:
                 # Network: use the longest timeout among contributing rules.
                 # A C2 incident seeded by port_scan should live as long as C2.
                 # Mirrors Wazuh: frequency rule timeout is max of contributing rules.
+                timeout = max(
+                    self.WINDOWS[r]["incident_inactivity_timeout"]
+                    for r in rule_ids
+                    if r in self.WINDOWS
+                )
+            elif any(r in IDS_RULE_IDS for r in rule_ids):
+                # IDS: use the longest timeout among contributing IDS rules.
                 timeout = max(
                     self.WINDOWS[r]["incident_inactivity_timeout"]
                     for r in rule_ids

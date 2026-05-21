@@ -328,6 +328,192 @@ RULE_NETWORK_SUSPICIOUS_DNS = RuleDefinition(
     mitre_technique="Application Layer Protocol: DNS",
 )
 
+# ── Suricata IDS Category Rules ──────────────────────────────────────────────
+
+RULE_NETWORK_IDS_MALWARE = RuleDefinition(
+    rule_id="network_ids_malware",
+    description=(
+        "Suricata IDS signature indicates malware-related activity such as "
+        "trojan, dropper, downloader, payload, ransomware, backdoor, RAT, "
+        "or malware delivery."
+    ),
+    trigger_event_types=["network_ids_alert"],
+    group_by_fields=["source_ip", "destination_ip", "destination_port", "ids_rule_id"],
+    accumulator_type="frequency",
+    cardinality_field=None,
+    threshold=1,
+    timeframe_seconds=60,
+    ignore_seconds=300,
+    severity="CRITICAL",
+    severity_level=12,
+    mitre_id="T1105",
+    mitre_tactic="Command and Control",
+    mitre_technique="Ingress Tool Transfer",
+)
+
+RULE_NETWORK_IDS_C2 = RuleDefinition(
+    rule_id="network_ids_c2",
+    description=(
+        "Suricata IDS signature indicates command-and-control, callback, "
+        "beaconing, botnet, CNC, implant, RAT, or backdoor communication."
+    ),
+    trigger_event_types=["network_ids_alert"],
+    group_by_fields=["source_ip", "destination_ip", "destination_port", "ids_rule_id"],
+    accumulator_type="frequency",
+    cardinality_field=None,
+    threshold=1,
+    timeframe_seconds=60,
+    ignore_seconds=300,
+    severity="CRITICAL",
+    severity_level=12,
+    mitre_id="T1071",
+    mitre_tactic="Command and Control",
+    mitre_technique="Application Layer Protocol",
+)
+
+RULE_NETWORK_IDS_EXPLOIT = RuleDefinition(
+    rule_id="network_ids_exploit",
+    description=(
+        "Suricata IDS signature indicates exploit attempt, RCE, CVE "
+        "exploitation, shellcode, SQL injection, XSS, traversal, or web "
+        "application attack."
+    ),
+    trigger_event_types=["network_ids_alert"],
+    group_by_fields=["source_ip", "destination_ip", "destination_port", "ids_rule_id"],
+    accumulator_type="frequency",
+    cardinality_field=None,
+    threshold=1,
+    timeframe_seconds=60,
+    ignore_seconds=300,
+    severity="HIGH",
+    severity_level=10,
+    mitre_id="T1190",
+    mitre_tactic="Initial Access",
+    mitre_technique="Exploit Public-Facing Application",
+)
+
+RULE_NETWORK_IDS_SCAN_RECON = RuleDefinition(
+    rule_id="network_ids_scan_recon",
+    description=(
+        "Suricata IDS signature indicates scan, recon, Nmap, Masscan, "
+        "portscan, ping sweep, service detection, or information leak."
+    ),
+    trigger_event_types=["network_ids_alert"],
+    group_by_fields=["source_ip", "destination_ip", "destination_port", "ids_rule_id"],
+    accumulator_type="frequency",
+    cardinality_field=None,
+    threshold=1,
+    timeframe_seconds=60,
+    ignore_seconds=300,
+    severity="MEDIUM",
+    severity_level=7,
+    mitre_id="T1046",
+    mitre_tactic="Discovery",
+    mitre_technique="Network Service Discovery",
+)
+
+RULE_NETWORK_IDS_CREDENTIAL = RuleDefinition(
+    rule_id="network_ids_credential",
+    description=(
+        "Suricata IDS signature indicates credential theft, phishing, "
+        "password/login attack, brute force, suspicious authentication, "
+        "or cleartext credential exposure."
+    ),
+    trigger_event_types=["network_ids_alert"],
+    group_by_fields=["source_ip", "destination_ip", "destination_port", "ids_rule_id"],
+    accumulator_type="frequency",
+    cardinality_field=None,
+    threshold=1,
+    timeframe_seconds=60,
+    ignore_seconds=300,
+    severity="HIGH",
+    severity_level=10,
+    mitre_id="T1110",
+    mitre_tactic="Credential Access",
+    mitre_technique="Brute Force",
+)
+
+RULE_NETWORK_IDS_EXFILTRATION = RuleDefinition(
+    rule_id="network_ids_exfiltration",
+    description=(
+        "Suricata IDS signature indicates exfiltration, data leak, tunneling, "
+        "DNS tunnel, large upload, suspicious upload, or data loss behavior."
+    ),
+    trigger_event_types=["network_ids_alert"],
+    group_by_fields=["source_ip", "destination_ip", "destination_port", "ids_rule_id"],
+    accumulator_type="frequency",
+    cardinality_field=None,
+    threshold=1,
+    timeframe_seconds=60,
+    ignore_seconds=300,
+    severity="CRITICAL",
+    severity_level=12,
+    mitre_id="T1041",
+    mitre_tactic="Exfiltration",
+    mitre_technique="Exfiltration Over C2 Channel",
+)
+
+RULE_NETWORK_IDS_POLICY = RuleDefinition(
+    rule_id="network_ids_policy",
+    description=(
+        "Suricata IDS signature indicates policy violation such as TOR, proxy, "
+        "VPN, anonymizer, torrent, crypto mining, unauthorized P2P, or other "
+        "restricted traffic."
+    ),
+    trigger_event_types=["network_ids_alert"],
+    group_by_fields=["source_ip", "destination_ip", "destination_port", "ids_rule_id"],
+    accumulator_type="frequency",
+    cardinality_field=None,
+    threshold=1,
+    timeframe_seconds=60,
+    ignore_seconds=300,
+    severity="MEDIUM",
+    severity_level=6,
+    mitre_id="T1090",
+    mitre_tactic="Command and Control",
+    mitre_technique="Proxy",
+)
+
+RULE_NETWORK_IDS_PROTOCOL_ANOMALY = RuleDefinition(
+    rule_id="network_ids_protocol_anomaly",
+    description=(
+        "Suricata IDS signature indicates malformed traffic, protocol anomaly, "
+        "bad traffic, invalid protocol behavior, or decode issue."
+    ),
+    trigger_event_types=["network_ids_alert"],
+    group_by_fields=["source_ip", "destination_ip", "destination_port", "ids_rule_id"],
+    accumulator_type="frequency",
+    cardinality_field=None,
+    threshold=1,
+    timeframe_seconds=60,
+    ignore_seconds=300,
+    severity="MEDIUM",
+    severity_level=6,
+    mitre_id="T1040",
+    mitre_tactic="Credential Access",
+    mitre_technique="Network Sniffing",
+)
+
+RULE_NETWORK_IDS_UNKNOWN_HIGH = RuleDefinition(
+    rule_id="network_ids_unknown_high",
+    description=(
+        "Suricata IDS signature did not match a known IDS category, but "
+        "Logstash marked it high or critical severity."
+    ),
+    trigger_event_types=["network_ids_alert"],
+    group_by_fields=["source_ip", "destination_ip", "destination_port", "ids_rule_id"],
+    accumulator_type="frequency",
+    cardinality_field=None,
+    threshold=1,
+    timeframe_seconds=60,
+    ignore_seconds=300,
+    severity="HIGH",
+    severity_level=10,
+    mitre_id="",
+    mitre_tactic="",
+    mitre_technique="",
+)
+
 # ── Ordered list of all rules ────────────────────────────────────────────────
 # success_after_brute_force is evaluated separately in rule_engine.py
 # but we include it here so ALL_RULES is the single source of truth.
@@ -349,4 +535,13 @@ ALL_RULES: List[RuleDefinition] = [
     RULE_NETWORK_SUSPICIOUS_OUTBOUND,
     RULE_NETWORK_C2_BEACONING,
     RULE_NETWORK_SUSPICIOUS_DNS,
+    RULE_NETWORK_IDS_MALWARE,
+    RULE_NETWORK_IDS_C2,
+    RULE_NETWORK_IDS_EXPLOIT,
+    RULE_NETWORK_IDS_SCAN_RECON,
+    RULE_NETWORK_IDS_CREDENTIAL,
+    RULE_NETWORK_IDS_EXFILTRATION,
+    RULE_NETWORK_IDS_POLICY,
+    RULE_NETWORK_IDS_PROTOCOL_ANOMALY,
+    RULE_NETWORK_IDS_UNKNOWN_HIGH,
 ]

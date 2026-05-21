@@ -9,6 +9,8 @@ Contains:
   - AllowlistChecker: drops allowlisted events before rule evaluation
   - WatchList: in-memory watch for success-after-brute-force correlation
   - NetworkClassifier: classifies network events before rule matching
+  - IDSRouter: routes network_ids_alert events to the correct IDS rule
+    based on Logstash-assigned tags (Wazuh-style category chaining)
   - RuleEngine: orchestrates all detection
 
 MUST NOT talk to Elasticsearch directly.
@@ -505,6 +507,132 @@ class NetworkClassifier:
         return False
 
 
+# ── IDS Router ────────────────────────────────────────────────────────────────
+#
+# Design rationale (Wazuh-style hierarchical chaining):
+#
+# Wazuh handles Suricata IDS in two passes:
+#   Pass 1 — parent rule 86601: catches any event_type=alert from Suricata.
+#             This is the gate. Nothing more.
+#   Pass 2 — child rules (86681-86685): branch by alert.severity (1→level 15,
+#             2→level 10, 3→level 5) using if_sid pointing to 86601.
+#             Further child rules branch by alert.category keyword.
+#
+# Wazuh's key design principles replicated here:
+#   1. Gate check first  — low-value/noise tags are the parent-rule filter.
+#   2. Category chaining — each tag maps to exactly one rule bucket,
+#      but an event may match multiple buckets (unlike elif).
+#   3. Severity gate on unknown — ids_unknown only routes to a rule when
+#      severity is critical or high, mirroring Wazuh's level-threshold logic.
+#   4. No string parsing  — Logstash already decoded category strings into
+#      structured tags; Python trusts those tags completely.
+#   5. Additive routing   — multiple tags → multiple rule IDs allowed to fire,
+#      exactly as Wazuh child rules each independently evaluate if_sid.
+#
+# _IDS_RULE_IDS is the canonical set. Any rule_id in this set is an IDS rule
+# and will only be evaluated for network_ids_alert events (never for other
+# event types), keeping non-IDS rules completely isolated from IDS events.
+
+# Canonical set of all IDS rule IDs known to this engine.
+# Used to guard the IDS path and prevent cross-contamination.
+_IDS_RULE_IDS: Set[str] = {
+    "network_ids_malware",
+    "network_ids_c2",
+    "network_ids_exploit",
+    "network_ids_scan_recon",
+    "network_ids_credential",
+    "network_ids_exfiltration",
+    "network_ids_policy",
+    "network_ids_protocol_anomaly",
+    "network_ids_unknown_high",
+}
+
+# Tags that unconditionally suppress IDS rule evaluation.
+# Equivalent to Wazuh's "noalert" or level-0 suppression rules.
+_IDS_SUPPRESSION_TAGS: Set[str] = {
+    "ids_info",
+    "ids_low_value",
+}
+
+# Noise tags that also suppress IDS rule evaluation.
+# Shared with _NETWORK_NOISE_TAGS for belt-and-suspenders protection.
+_IDS_NOISE_TAGS: Set[str] = _NETWORK_NOISE_TAGS
+
+
+def _is_ids_rule(rule_id: str) -> bool:
+    """Return True if the given rule_id belongs to the IDS rule family."""
+    return rule_id in _IDS_RULE_IDS
+
+
+def _get_ids_rule_ids_for_event(event: Event) -> Set[str]:
+    """
+    Map Logstash-assigned IDS tags to the set of IDS rule IDs that should
+    evaluate this event.
+
+    This is the Python equivalent of Wazuh's child-rule fan-out:
+    each tag independently activates its corresponding rule bucket.
+    An event with both ids_malware and ids_c2 activates both rules,
+    just as two independent Wazuh child rules would both fire on the
+    same parent event.
+
+    Returns an empty set if the event should be suppressed entirely.
+    Does NOT mutate event.tags.
+    """
+    tags: Set[str] = set(getattr(event, "tags", None) or [])
+
+    # ── Gate 1: Low-value suppression (Wazuh: level-0 noalert rule) ──────────
+    # ET INFO / Not Suspicious Traffic style alerts must never become
+    # SIEM alerts regardless of any other tags present.
+    if tags & _IDS_SUPPRESSION_TAGS:
+        return set()
+
+    # ── Gate 2: Noise suppression ─────────────────────────────────────────────
+    # Belt-and-suspenders: NetworkClassifier already drops noise events
+    # for standard network_flow/dns paths, but network_ids_alert bypasses
+    # that classifier. Recheck here.
+    if tags & _IDS_NOISE_TAGS:
+        return set()
+
+    # ── Category routing (Wazuh-style additive child-rule fan-out) ───────────
+    # Each check is independent — do NOT use elif.
+    # An event tagged ids_malware + ids_c2 produces both rule IDs.
+    allowed: Set[str] = set()
+
+    if "ids_malware" in tags:
+        allowed.add("network_ids_malware")
+
+    if "ids_c2" in tags:
+        allowed.add("network_ids_c2")
+
+    if "ids_exploit" in tags:
+        allowed.add("network_ids_exploit")
+
+    if "ids_scan" in tags or "ids_recon" in tags:
+        allowed.add("network_ids_scan_recon")
+
+    if "ids_credential" in tags:
+        allowed.add("network_ids_credential")
+
+    if "ids_exfiltration" in tags:
+        allowed.add("network_ids_exfiltration")
+
+    if "ids_policy" in tags:
+        allowed.add("network_ids_policy")
+
+    if "ids_protocol_anomaly" in tags:
+        allowed.add("network_ids_protocol_anomaly")
+
+    # ── Severity gate for unknown category ────────────────────────────────────
+    # Mirrors Wazuh's child-rule pattern: only escalate unknowns when
+    # severity 1 (critical) or 2 (high) would fire a high-level alert.
+    # Medium/low unknowns are not worth escalating — too noisy.
+    if "ids_unknown" in tags:
+        if "ids_severity_critical" in tags or "ids_severity_high" in tags:
+            allowed.add("network_ids_unknown_high")
+
+    return allowed
+
+
 # ── Rule Engine ───────────────────────────────────────────────────────────────
 
 # Rules whose firing should add attack context to the watch list.
@@ -523,12 +651,23 @@ _RULE_PRIORITY = {
     "ssh_bruteforce": 40,
     "sudo_bruteforce": 50,
     "success_after_brute_force": 90,
-    # Network rules evaluated after auth/web rules.
+    # Network flow/DNS rules evaluated after auth/web rules.
     "network_port_scan": 110,
     "network_internal_sweep": 120,
     "network_c2_beaconing": 130,
     "network_suspicious_outbound": 140,
     "network_suspicious_dns": 150,
+    # IDS rules evaluated last — they are already pre-filtered by IDSRouter
+    # and have threshold=1, so ordering within the IDS family is cosmetic.
+    "network_ids_malware": 200,
+    "network_ids_c2": 201,
+    "network_ids_exploit": 202,
+    "network_ids_scan_recon": 203,
+    "network_ids_credential": 204,
+    "network_ids_exfiltration": 205,
+    "network_ids_policy": 206,
+    "network_ids_protocol_anomaly": 207,
+    "network_ids_unknown_high": 208,
 }
 
 
@@ -640,6 +779,10 @@ class RuleEngine:
         event type — no classification needed.
 
         Returns None if the event should be dropped entirely.
+
+        Note: network_ids_alert is intentionally NOT in _NETWORK_EVENT_TYPES.
+        IDS events bypass the NetworkClassifier entirely — they are pre-classified
+        by Logstash and routed by _get_ids_rule_ids_for_event() instead.
         """
         if event.event_type in _NETWORK_EVENT_TYPES:
             classification = self.network_classifier.classify(event)
@@ -658,6 +801,82 @@ class RuleEngine:
         # Non-network event — no classification needed.
         return {event.event_type}
 
+    def _process_ids_event(self, event: Event) -> List[dict]:
+        """
+        Handle a network_ids_alert event end-to-end.
+
+        This is the IDS fast-path, completely separate from the standard
+        rule loop. Mirrors Wazuh's two-pass model:
+
+          Pass 1 (gate):   _get_ids_rule_ids_for_event() — suppression +
+                           tag-to-rule mapping.
+          Pass 2 (fanout): evaluate each allowed IDS rule independently,
+                           letting the normal accumulator path run for each.
+
+        IDS rules are never evaluated against non-IDS events, and non-IDS
+        rules are never evaluated against IDS events.
+        """
+        allowed_ids_rule_ids = _get_ids_rule_ids_for_event(event)
+
+        if not allowed_ids_rule_ids:
+            # Event suppressed (low-value, noise, or unroutable unknown).
+            log.debug(
+                "IDS event suppressed: no routing rules matched "
+                "[src=%s dst=%s tags=%s]",
+                event.source_ip,
+                getattr(event, "destination_ip", None),
+                sorted(getattr(event, "tags", None) or []),
+            )
+            return []
+
+        log.info(
+            "IDS event routed to rules: %s [src=%s dst=%s ids_rule_id=%s]",
+            sorted(allowed_ids_rule_ids),
+            event.source_ip,
+            getattr(event, "destination_ip", None),
+            getattr(event, "ids_rule_id", None),
+        )
+
+        alerts: List[dict] = []
+
+        for rule in self.rules:
+            # Only evaluate IDS rules in this path.
+            if not _is_ids_rule(rule.rule_id):
+                continue
+
+            # Only evaluate rules that the tag router allowed.
+            if rule.rule_id not in allowed_ids_rule_ids:
+                continue
+
+            # IDS rules all use trigger_event_types = ["network_ids_alert"].
+            # Sanity-check in case rules.py drifts from this contract.
+            if "network_ids_alert" not in rule.trigger_event_types:
+                log.warning(
+                    "IDS rule %s does not declare network_ids_alert in "
+                    "trigger_event_types — skipping",
+                    rule.rule_id,
+                )
+                continue
+
+            group_key = self.accumulator._build_group_key(event, rule)
+            if group_key is None:
+                continue
+
+            fired_slot = self.accumulator.process(event, rule)
+
+            if fired_slot:
+                alert = build_alert(rule, fired_slot, event)
+                alerts.append(alert)
+
+                log.warning(
+                    "ALERT [%s] %s: %s",
+                    rule.severity,
+                    rule.rule_id,
+                    alert.get("rule", {}).get("description", ""),
+                )
+
+        return alerts
+
     def process_event(self, event: Event) -> List[dict]:
         """
         Evaluate one event against all rules.
@@ -668,18 +887,29 @@ class RuleEngine:
 
         Flow:
             1. Allowlist check — drop if matched.
-            2. Effective event type resolution:
+            2. IDS fast-path — network_ids_alert events are routed directly
+               via _process_ids_event() and bypass the standard rule loop.
+               Non-IDS rules are never evaluated for these events.
+            3. Effective event type resolution for all other events:
                - Network events go through NetworkClassifier first.
                - Non-network events pass through unchanged.
                - Noisy/stats network events are dropped here.
-            3. Rule loop — evaluated against effective event types.
-            4. Watchlist logic for success_after_brute_force.
-            5. Standard accumulator logic for all other rules.
+            4. Rule loop — evaluated against effective event types.
+               IDS rules are skipped here (they only fire in step 2).
+            5. Watchlist logic for success_after_brute_force.
+            6. Standard accumulator logic for all other rules.
         """
         if self.allowlist.is_allowed(event):
             return []
 
-        # Step 2: resolve effective event types (includes network classification).
+        # ── Step 2: IDS fast-path ─────────────────────────────────────────────
+        # network_ids_alert events have already been categorized by Logstash.
+        # Route them directly to the matching IDS rules without touching the
+        # standard flow classifier or the non-IDS rule loop.
+        if event.event_type == "network_ids_alert":
+            return self._process_ids_event(event)
+
+        # ── Step 3: resolve effective event types for non-IDS events ─────────
         effective_event_types = self._get_effective_event_types(event)
         if effective_event_types is None:
             return []
@@ -688,6 +918,11 @@ class RuleEngine:
         fired_rule_ids: set[str] = set()
 
         for rule in self.rules:
+            # IDS rules are never evaluated in the standard loop.
+            # They are exclusively handled by _process_ids_event() above.
+            if _is_ids_rule(rule.rule_id):
+                continue
+
             # Match rule trigger against effective event types.
             # A single event may match multiple rules if it was given
             # additional virtual types by the NetworkClassifier.

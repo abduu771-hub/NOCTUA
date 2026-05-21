@@ -13,6 +13,7 @@ Permanent context model:
   - users_seen          → all users observed in this slot/window
   - source_ips_seen     → all source IPs observed in this slot/window
   - hosts_seen          → all hosts observed in this slot/window
+  - destination_ips_seen → all destination IPs observed in this slot/window
 
 This allows rule_engine.py to build success-after-brute-force correlation
 using user.name + host.name without depending on same source.ip.
@@ -237,6 +238,7 @@ class AccumulatorManager:
         For cardinality rules:
           - password_spray with cardinality_field="user" can rebuild users_seen.
           - distributed_bruteforce with cardinality_field="source_ip" can rebuild source_ips_seen.
+          - network_internal_sweep with cardinality_field="destination_ip" can rebuild destination_ips_seen.
 
         Frequency rules keep context until the slot fires/reset because the
         event tuple only stores raw_log, not full structured fields.
@@ -262,8 +264,10 @@ class AccumulatorManager:
           - user_bruteforce_by_user → source.ip + user.name + host.name
           - password_spray          → source.ip + host.name
           - distributed_bruteforce  → user.name + host.name
+          - network_* generic rules → fields declared in rule.group_by_fields
 
-        This prevents unrelated hosts from being merged into the same detection.
+        IDS rules can now safely use ids_rule_id from event.ids_rule_id.
+        Missing or empty required group fields return None and skip the event.
         """
         rule_id = rule.rule_id
 
@@ -315,25 +319,54 @@ class AccumulatorManager:
 
         if rule_id.startswith("network_"):
             parts: List[str] = []
+
             for field_name in rule.group_by_fields:
-                value = getattr(event, field_name, None)
+                value = self._get_group_by_field(event, field_name)
                 if value is None:
                     return None
+
                 parts.append(f"{field_name}={value}")
+
             return "|".join(parts)
 
         # Default fallback for any other rule types.
         parts: List[str] = []
 
         for field_name in rule.group_by_fields:
-            value = getattr(event, field_name, None)
+            value = self._get_group_by_field(event, field_name)
 
             if value is None:
                 return None
 
-            parts.append(str(value))
+            parts.append(value)
 
         return "::".join(parts)
+
+    @staticmethod
+    def _get_group_by_field(event: Event, field_name: str) -> Optional[str]:
+        """
+        Safely extract a required group_by field from Event.
+
+        This supports ids_rule_id for Suricata IDS alert rules and keeps the
+        existing generic grouping behavior for network/web/system fields.
+
+        Returns None for:
+          - missing attributes
+          - None
+          - empty strings
+          - whitespace-only strings
+        """
+        value = getattr(event, field_name, None)
+
+        if value is None:
+            return None
+
+        value_str = str(value).strip()
+
+        if not value_str:
+            return None
+
+        return value_str
 
     @staticmethod
     def _get_cardinality_field(
@@ -351,12 +384,22 @@ class AccumulatorManager:
                     parts = raw_log.split('"')
                     if len(parts) >= 6:
                         req_part = parts[1].strip()
-                        req_tokens = req_part.split(' ')
+                        req_tokens = req_part.split(" ")
                         if len(req_tokens) >= 2:
-                            return req_tokens[1]
+                            value = req_tokens[1].strip()
+                            return value if value else None
                 except Exception:
                     pass
             return None
 
         value = getattr(event, field_name, None)
-        return str(value) if value is not None else None
+
+        if value is None:
+            return None
+
+        value_str = str(value).strip()
+
+        if not value_str:
+            return None
+
+        return value_str

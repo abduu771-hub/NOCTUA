@@ -46,12 +46,48 @@ NETWORK_RULE_IDS = {
     "network_suspicious_dns",
 }
 
+IDS_RULE_IDS = {
+    "network_ids_malware",
+    "network_ids_c2",
+    "network_ids_exploit",
+    "network_ids_scan_recon",
+    "network_ids_credential",
+    "network_ids_exfiltration",
+    "network_ids_policy",
+    "network_ids_protocol_anomaly",
+    "network_ids_unknown_high",
+}
+
 NETWORK_RULE_TITLES = {
     "network_port_scan": "Network Port Scan Detected",
     "network_internal_sweep": "Internal Network Sweep Detected",
     "network_suspicious_outbound": "Suspicious Outbound Connection Detected",
     "network_c2_beaconing": "Possible C2 Beaconing Detected",
     "network_suspicious_dns": "Suspicious DNS Activity Detected",
+}
+
+IDS_RULE_TITLES = {
+    "network_ids_malware": "Suricata IDS Malware Signature Detected",
+    "network_ids_c2": "Suricata IDS Command and Control Signature Detected",
+    "network_ids_exploit": "Suricata IDS Exploit Signature Detected",
+    "network_ids_scan_recon": "Suricata IDS Scan or Recon Signature Detected",
+    "network_ids_credential": "Suricata IDS Credential Attack Signature Detected",
+    "network_ids_exfiltration": "Suricata IDS Exfiltration Signature Detected",
+    "network_ids_policy": "Suricata IDS Policy Violation Signature Detected",
+    "network_ids_protocol_anomaly": "Suricata IDS Protocol Anomaly Signature Detected",
+    "network_ids_unknown_high": "Suricata IDS High-Severity Unknown Signature Detected",
+}
+
+IDS_ATTACK_TYPES = {
+    "network_ids_malware": "IDS / Malware",
+    "network_ids_c2": "IDS / Command and Control",
+    "network_ids_exploit": "IDS / Exploit Attempt",
+    "network_ids_scan_recon": "IDS / Scan or Recon",
+    "network_ids_credential": "IDS / Credential Attack",
+    "network_ids_exfiltration": "IDS / Exfiltration",
+    "network_ids_policy": "IDS / Policy Violation",
+    "network_ids_protocol_anomaly": "IDS / Protocol Anomaly",
+    "network_ids_unknown_high": "IDS / Unknown High Severity",
 }
 
 NETWORK_RULE_EXPLANATIONS = {
@@ -75,12 +111,54 @@ NETWORK_RULE_EXPLANATIONS = {
     ),
 }
 
+IDS_RULE_EXPLANATIONS = {
+    "network_ids_malware": (
+        "Suricata matched an IDS signature categorized as malware-related activity."
+    ),
+    "network_ids_c2": (
+        "Suricata matched an IDS signature categorized as command-and-control activity."
+    ),
+    "network_ids_exploit": (
+        "Suricata matched an IDS signature categorized as an exploit attempt."
+    ),
+    "network_ids_scan_recon": (
+        "Suricata matched an IDS signature categorized as scan or reconnaissance activity."
+    ),
+    "network_ids_credential": (
+        "Suricata matched an IDS signature categorized as credential attack activity."
+    ),
+    "network_ids_exfiltration": (
+        "Suricata matched an IDS signature categorized as possible data exfiltration."
+    ),
+    "network_ids_policy": (
+        "Suricata matched an IDS signature categorized as a policy violation."
+    ),
+    "network_ids_protocol_anomaly": (
+        "Suricata matched an IDS signature categorized as a protocol anomaly."
+    ),
+    "network_ids_unknown_high": (
+        "Suricata matched an IDS signature with unknown category but high or critical severity."
+    ),
+}
+
 NETWORK_RULE_GROUP_BY = {
     "network_port_scan": "source_ip + destination_ip",
     "network_internal_sweep": "source_ip + destination_port",
     "network_suspicious_outbound": "source_ip + destination_ip + destination_port",
     "network_c2_beaconing": "source_ip + destination_ip + destination_port",
     "network_suspicious_dns": "source_ip",
+}
+
+IDS_RULE_GROUP_BY = {
+    "network_ids_malware": "source_ip + destination_ip + destination_port + ids_rule_id",
+    "network_ids_c2": "source_ip + destination_ip + destination_port + ids_rule_id",
+    "network_ids_exploit": "source_ip + destination_ip + destination_port + ids_rule_id",
+    "network_ids_scan_recon": "source_ip + destination_ip + destination_port + ids_rule_id",
+    "network_ids_credential": "source_ip + destination_ip + destination_port + ids_rule_id",
+    "network_ids_exfiltration": "source_ip + destination_ip + destination_port + ids_rule_id",
+    "network_ids_policy": "source_ip + destination_ip + destination_port + ids_rule_id",
+    "network_ids_protocol_anomaly": "source_ip + destination_ip + destination_port + ids_rule_id",
+    "network_ids_unknown_high": "source_ip + destination_ip + destination_port + ids_rule_id",
 }
 
 
@@ -106,6 +184,13 @@ def _is_network_rule(rule_id: str) -> bool:
     Return True for custom network-layer rules supported by alert_builder.py.
     """
     return rule_id in NETWORK_RULE_IDS
+
+
+def _is_ids_rule(rule_id: str) -> bool:
+    """
+    Return True for Suricata IDS category rules supported by alert_builder.py.
+    """
+    return rule_id in IDS_RULE_IDS
 
 
 def _get_event_value(event: Event, attr_name: str) -> Any:
@@ -365,6 +450,155 @@ def _apply_network_alert_fields(
     alert["attack_context"] = attack_context
 
 
+def _apply_ids_alert_fields(
+    alert: dict,
+    rule: RuleDefinition,
+    fired_slot,
+    triggering_event: Event,
+    event_count: int,
+    source_ips_seen: List[str],
+    destination_ips_seen: List[str],
+    first_seen: Optional[str],
+    last_seen: Optional[str],
+) -> None:
+    """
+    Add Suricata IDS alert enrichment for IDS category rules.
+
+    This function only uses structured Event fields populated by models.py.
+    It does not parse raw logs, parse message strings, evaluate rules, write
+    alerts, create incidents, or replace the SIEM-AI rule identity.
+    """
+    rule_id = rule.rule_id
+
+    source_port = _get_event_value(triggering_event, "source_port")
+    destination_ip = _get_event_value(triggering_event, "destination_ip")
+    destination_port = _get_event_value(triggering_event, "destination_port")
+    network_transport = _get_event_value(triggering_event, "network_transport")
+    network_protocol = _get_event_value(triggering_event, "network_protocol")
+    network_bytes = _get_event_value(triggering_event, "network_bytes")
+    network_packets = _get_event_value(triggering_event, "network_packets")
+    event_dataset = _get_event_value(triggering_event, "event_dataset")
+    event_action = _get_event_value(triggering_event, "event_type")
+    event_tags = _sorted_string_list(_get_event_value(triggering_event, "tags"))
+
+    ids_rule_id = _get_event_value(triggering_event, "ids_rule_id")
+    ids_rule_name = _get_event_value(triggering_event, "ids_rule_name")
+    ids_rule_category = _get_event_value(triggering_event, "ids_rule_category")
+    ids_severity = _get_event_value(triggering_event, "ids_severity")
+    ids_severity_label = _get_event_value(triggering_event, "ids_severity_label")
+    ids_alert_action = _get_event_value(triggering_event, "ids_alert_action")
+    ids_alert_signature = _get_event_value(triggering_event, "ids_alert_signature")
+    ids_alert_category = _get_event_value(triggering_event, "ids_alert_category")
+    ids_alert_gid = _get_event_value(triggering_event, "ids_alert_gid")
+    ids_alert_rev = _get_event_value(triggering_event, "ids_alert_rev")
+
+    alert.setdefault("alert", {})["title"] = IDS_RULE_TITLES[rule_id]
+
+    # ECS/network evidence.
+    _set_nested_if_present(alert, ("source", "ip"), triggering_event.source_ip)
+    _set_nested_if_present(alert, ("source", "port"), source_port)
+    _set_nested_if_present(alert, ("destination", "ip"), destination_ip)
+    _set_nested_if_present(alert, ("destination", "port"), destination_port)
+    _set_nested_if_present(alert, ("network", "transport"), network_transport)
+    _set_nested_if_present(alert, ("network", "protocol"), network_protocol)
+    _set_nested_if_present(alert, ("network", "bytes"), network_bytes)
+    _set_nested_if_present(alert, ("network", "packets"), network_packets)
+    _set_nested_if_present(alert, ("event", "dataset"), event_dataset)
+    _set_nested_if_present(alert, ("event", "action"), event_action)
+    _set_nested_if_present(alert, ("event", "severity"), ids_severity)
+
+    # Keep SIEM-AI rule.id untouched. Store Suricata IDS signature metadata
+    # separately under ids.*, suricata.alert.*, evidence, and attack_context.
+    _set_nested_if_present(alert, ("ids", "rule_id"), ids_rule_id)
+    _set_nested_if_present(alert, ("ids", "rule_name"), ids_rule_name)
+    _set_nested_if_present(alert, ("ids", "rule_category"), ids_rule_category)
+    _set_nested_if_present(alert, ("ids", "severity"), ids_severity)
+    _set_nested_if_present(alert, ("ids", "severity_label"), ids_severity_label)
+    _set_nested_if_present(alert, ("ids", "alert_action"), ids_alert_action)
+
+    _set_nested_if_present(alert, ("suricata", "alert", "signature"), ids_alert_signature)
+    _set_nested_if_present(alert, ("suricata", "alert", "category"), ids_alert_category)
+    _set_nested_if_present(alert, ("suricata", "alert", "action"), ids_alert_action)
+    _set_nested_if_present(alert, ("suricata", "alert", "signature_id"), ids_rule_id)
+    _set_nested_if_present(alert, ("suricata", "alert", "gid"), ids_alert_gid)
+    _set_nested_if_present(alert, ("suricata", "alert", "rev"), ids_alert_rev)
+
+    if event_tags:
+        alert["tags"] = sorted(set(alert.get("tags", [])) | set(event_tags))
+
+    alert["evidence"]["event_count"] = event_count
+    alert["evidence"]["rule_explanation"] = IDS_RULE_EXPLANATIONS[rule_id]
+    alert["evidence"]["group_by"] = IDS_RULE_GROUP_BY[rule_id]
+    alert["evidence"]["source"] = "suricata_ids"
+
+    optional_evidence = {
+        "ids_rule_id": ids_rule_id,
+        "ids_rule_name": ids_rule_name,
+        "ids_rule_category": ids_rule_category,
+        "ids_severity": ids_severity,
+        "ids_severity_label": ids_severity_label,
+        "ids_alert_action": ids_alert_action,
+        "ids_alert_signature": ids_alert_signature,
+        "ids_alert_category": ids_alert_category,
+        "ids_alert_gid": ids_alert_gid,
+        "ids_alert_rev": ids_alert_rev,
+    }
+
+    for key, value in optional_evidence.items():
+        if _is_present(value):
+            alert["evidence"][key] = value
+
+    if source_ips_seen:
+        alert["evidence"]["source_ips_seen"] = source_ips_seen
+
+    if destination_ips_seen:
+        alert["evidence"]["destination_ips_seen"] = destination_ips_seen
+
+    if first_seen:
+        alert["evidence"]["first_seen"] = first_seen
+
+    if last_seen:
+        alert["evidence"]["last_seen"] = last_seen
+
+    attack_context = {
+        "layer": "network",
+        "source": "suricata_ids",
+        "rule_id": rule_id,
+        "attack_type": IDS_ATTACK_TYPES[rule_id],
+        "group_key": fired_slot.group_key,
+        "event_count": event_count,
+        "time_window_seconds": rule.timeframe_seconds,
+        "threshold": rule.threshold,
+        "accumulator_type": rule.accumulator_type,
+    }
+
+    optional_attack_context = {
+        "ids_rule_id": ids_rule_id,
+        "ids_rule_name": ids_rule_name,
+        "ids_rule_category": ids_rule_category,
+        "ids_severity": ids_severity,
+        "ids_severity_label": ids_severity_label,
+        "ids_alert_action": ids_alert_action,
+        "ids_alert_signature": ids_alert_signature,
+        "ids_alert_category": ids_alert_category,
+        "ids_alert_gid": ids_alert_gid,
+        "ids_alert_rev": ids_alert_rev,
+        "source_ip": triggering_event.source_ip,
+        "destination_ip": destination_ip,
+        "destination_port": destination_port,
+        "network_transport": network_transport,
+        "network_protocol": network_protocol,
+        "tags": event_tags,
+        "reason": IDS_RULE_EXPLANATIONS[rule_id],
+    }
+
+    for key, value in optional_attack_context.items():
+        if _is_present(value):
+            attack_context[key] = value
+
+    alert["attack_context"] = attack_context
+
+
 def build_alert(
     rule: RuleDefinition,
     fired_slot,
@@ -572,6 +806,19 @@ def build_alert(
             last_seen=last_seen,
         )
 
+    if _is_ids_rule(rule.rule_id):
+        _apply_ids_alert_fields(
+            alert=alert,
+            rule=rule,
+            fired_slot=fired_slot,
+            triggering_event=triggering_event,
+            event_count=event_count,
+            source_ips_seen=source_ips_seen,
+            destination_ips_seen=destination_ips_seen,
+            first_seen=first_seen,
+            last_seen=last_seen,
+        )
+
     # ── Optional timing fields ────────────────────────────────────────────
     if suppressed_until is not None:
         alert["suppressed_until"] = suppressed_until
@@ -598,7 +845,7 @@ def build_alert(
     if unique_ips is not None:
         alert["evidence"]["unique_ips"] = unique_ips
 
-    if _is_network_rule(rule.rule_id) and destination_ips_seen:
+    if (_is_network_rule(rule.rule_id) or _is_ids_rule(rule.rule_id)) and destination_ips_seen:
         alert["evidence"]["destination_ips_seen"] = destination_ips_seen
 
     # ── Correlation context: success_after_brute_force only ───────────────
@@ -770,6 +1017,22 @@ def _build_description(
         return (
             "A host queried multiple suspicious DNS names within "
             f"{rule.timeframe_seconds}s."
+        )
+
+    if rule.rule_id in IDS_RULE_IDS:
+        ids_rule_name = _get_event_value(event, "ids_rule_name")
+        attack_type = IDS_ATTACK_TYPES.get(rule.rule_id, rule.rule_id)
+
+        if _is_present(ids_rule_name):
+            return (
+                f"{attack_type}: Suricata matched IDS signature "
+                f"'{ids_rule_name}'. The alert was normalized by Logstash "
+                "and routed by SIEM-AI based on IDS category tags."
+            )
+
+        return (
+            f"{attack_type}: Suricata matched an IDS signature. The alert was "
+            "normalized by Logstash and routed by SIEM-AI based on IDS category tags."
         )
 
     return f"{rule.rule_id}: threshold {count}/{rule.threshold} crossed"
