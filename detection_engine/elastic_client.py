@@ -4,7 +4,6 @@ Handles ALL communication with Elasticsearch for reading events.
 
 Responsibilities:
   - Fetch events from siem-raw-* where tags contains "ready_for_detection"
-  - search_after pagination using [@timestamp, _id] sort
   - Checkpoint extraction
 
 MUST NOT contain detection logic.
@@ -26,8 +25,11 @@ log = logging.getLogger("detection_engine.elastic_client")
 class ESReader:
     """Stateless Elasticsearch reader for the detection engine poll loop."""
 
-    def __init__(self, es_client: Elasticsearch,
-                 index_pattern: str = config.ES_RAW_INDEX):
+    def __init__(
+        self,
+        es_client: Elasticsearch,
+        index_pattern: str = config.ES_RAW_INDEX,
+    ) -> None:
         self.es = es_client
         self.index_pattern = index_pattern
 
@@ -38,19 +40,21 @@ class ESReader:
         batch_size: int = config.ES_POLL_BATCH_SIZE,
     ) -> List[dict]:
         """
-        Fetch new events from Elasticsearch since the last checkpoint.
+        Fetch new ready_for_detection events from Elasticsearch.
 
-        Uses search_after for stateless, no-duplicate pagination.
-        Only returns events tagged "ready_for_detection".
+        This is the original simple/live polling behavior:
+          - Only read events tagged ready_for_detection
+          - Use @timestamp checkpoint
+          - Use a small recent window when no checkpoint exists
+          - Sort by @timestamp asc
+          - Return ES hits to main.py
 
         Returns an empty list if no new events or ES is unavailable.
-        NEVER uses from+size — that reprocesses events on restart.
         """
         query: dict = {
             "size": batch_size,
             "sort": [
                 {"@timestamp": {"order": "asc"}},
-                
             ],
             "query": {
                 "bool": {
@@ -58,22 +62,43 @@ class ESReader:
                         {"match_all": {}},
                     ],
                     "filter": [
-                        {"term": {"tags": "ready_for_detection"}},
-                        {"range": {"@timestamp": {"gte": "now-2m"}}}
+                        {"term": {"tags.keyword": "ready_for_detection"}},
                     ],
                 }
             },
         }
 
-        # Resume from checkpoint
-        if last_processed_timestamp and last_processed_id:
-            query["search_after"] = [last_processed_timestamp]
+        if last_processed_timestamp:
+            query["query"]["bool"]["filter"].append(
+                {
+                    "range": {
+                        "@timestamp": {
+                            "gt": last_processed_timestamp,
+                        }
+                    }
+                }
+            )
+            log.debug(
+                "Polling ready events after checkpoint timestamp=%s id=%s",
+                last_processed_timestamp,
+                last_processed_id,
+            )
+        else:
+            query["query"]["bool"]["filter"].append(
+                {
+                    "range": {
+                        "@timestamp": {
+                            "gte": "now-2m",
+                        }
+                    }
+                }
+            )
+            log.info("No checkpoint found; polling ready events from now-2m")
 
         try:
             response = self.es.search(index=self.index_pattern, body=query)
             hits = response.get("hits", {}).get("hits", [])
-            if hits:
-                log.debug("Fetched %d events from ES", len(hits))
+            log.debug("Fetched %d ready events from ES", len(hits))
             return hits
         except Exception as exc:
             log.error("ES poll error: %s", exc)
@@ -87,5 +112,6 @@ class ESReader:
         """
         if not hits:
             return None, None
+
         last = hits[-1]
-        return last["_source"].get("@timestamp")
+        return last.get("_id"), last.get("_source", {}).get("@timestamp")

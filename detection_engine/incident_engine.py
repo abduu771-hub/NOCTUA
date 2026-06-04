@@ -63,8 +63,19 @@ import hashlib
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
+from unittest import result
 
 from elasticsearch import Elasticsearch
+
+try:
+    from detection_engine.cross_layer_engine import CrossLayerEngine
+except ImportError:
+    CrossLayerEngine = None
+
+try:
+    from detection_engine.ai_incident_analyzer import AIIncidentAnalyzer
+except ImportError:
+    AIIncidentAnalyzer = None
 
 log = logging.getLogger("detection_engine.incident_engine")
 
@@ -462,7 +473,40 @@ class IncidentEngine:
 
     def __init__(self, es_client: Elasticsearch):
         self.es = es_client
+        self.cross_layer_engine = CrossLayerEngine(es_client) if CrossLayerEngine else None
+        self.ai_analyzer = AIIncidentAnalyzer(es_client) if AIIncidentAnalyzer else None
         self._last_autoclose_run: Optional[datetime] = None
+
+    def _run_cross_layer_correlation(self) -> None:
+        if not self.cross_layer_engine:
+            return
+
+        try:
+            self.cross_layer_engine.process_recent_open_incidents()
+        except Exception:
+            log.exception("Cross-layer correlation failed")
+
+    def _run_ai_analysis(self, index: str, doc_id: str, incident_doc: dict) -> None:
+        """
+        Safely enrich an incident with AI analysis.
+
+        This must never break incident creation/update.
+        """
+        log.info("🤖 AI HOOK CALLED index=%s doc_id=%s", index, doc_id)
+
+        if not self.ai_analyzer:
+            return
+
+        try:
+            self.ai_analyzer.analyze_and_update(
+                index=index,
+                doc_id=doc_id,
+                incident_doc=incident_doc,
+                force=False,
+            )
+
+        except Exception as exc:
+            log.warning("AI incident analysis failed safely: %s", exc)
 
     # =========================================================================
     # MAIN ENTRY
@@ -932,6 +976,8 @@ class IncidentEngine:
             grouping_key,
             rule_id,
         )
+        self._run_ai_analysis(self._index_name(now), incident_id, doc)
+        self._run_cross_layer_correlation()
 
     # ------------------------------------------------------------------
     # Network incident UPDATE
@@ -1064,6 +1110,8 @@ class IncidentEngine:
             incident["alert_count"],
             rule_id,
         )
+        self._run_ai_analysis(hit["_index"], hit["_id"], src)
+        self._run_cross_layer_correlation()
 
     # ------------------------------------------------------------------
     # Network attack_context helpers
@@ -1611,6 +1659,8 @@ class IncidentEngine:
             rule_id,
             self._extract_ids_rule_id(alert) or self._extract_ids_signature(alert),
         )
+        self._run_ai_analysis(self._index_name(now), incident_id, doc)
+        self._run_cross_layer_correlation()
 
     def _update_ids_incident(
         self,
@@ -1730,6 +1780,8 @@ class IncidentEngine:
             rule_id,
             incoming_ids_rule_id or self._extract_ids_signature(alert),
         )
+        self._run_ai_analysis(hit["_index"], hit["_id"], src)
+        self._run_cross_layer_correlation()
 
     def _build_initial_ids_attack_context(
         self,
@@ -2799,6 +2851,8 @@ class IncidentEngine:
             severity,
             grouping_key,
         )
+        self._run_ai_analysis(self._index_name(now), incident_id, doc)
+        self._run_cross_layer_correlation()
 
     # =========================================================================
     # UPDATE (existing — untouched)
@@ -2896,6 +2950,8 @@ class IncidentEngine:
             incident.get("severity", "?"),
             incident["alert_count"],
         )
+        self._run_ai_analysis(hit["_index"], hit["_id"], src)
+        self._run_cross_layer_correlation()
 
     # =========================================================================
     # WEB INCIDENT HELPERS (existing — untouched)

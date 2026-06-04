@@ -749,6 +749,10 @@ def _network_min_count(scenario: str, count: int) -> int:
     return max(count, NETWORK_MIN_COUNTS[scenario])
 
 
+def _effective_source_ip(override: str | None, default: str) -> str:
+    return override.strip() if override and override.strip() else default
+
+
 def _app_proto_for_port(port: int, fallback: str = "tcp") -> str:
     """
     Return realistic Suricata app_proto values for common ports.
@@ -1062,11 +1066,12 @@ def _run_single_ids_scenario(
     )
 
 
-def run_network_ids_malware(log_file: str, *, offset_seconds: int = 0, seq: int = 0) -> None:
+def run_network_ids_malware(log_file: str, *, source_ip: str | None = None, offset_seconds: int = 0, seq: int = 0) -> None:
+    src_ip = _effective_source_ip(source_ip, NETWORK_COMPROMISED_HOST_IP)
     _run_single_ids_scenario(
         scenario="network_ids_malware",
         log_file=log_file,
-        src_ip=NETWORK_COMPROMISED_HOST_IP,
+        src_ip=src_ip,
         dest_ip=NETWORK_EXTERNAL_SUSPICIOUS_IP,
         dest_port=443,
         src_port=51510 + seq,
@@ -1082,11 +1087,12 @@ def run_network_ids_malware(log_file: str, *, offset_seconds: int = 0, seq: int 
     )
 
 
-def run_network_ids_c2(log_file: str, *, offset_seconds: int = 0, seq: int = 0) -> None:
+def run_network_ids_c2(log_file: str, *, source_ip: str | None = None, offset_seconds: int = 0, seq: int = 0) -> None:
+    src_ip = _effective_source_ip(source_ip, NETWORK_COMPROMISED_HOST_IP)
     _run_single_ids_scenario(
         scenario="network_ids_c2",
         log_file=log_file,
-        src_ip=NETWORK_COMPROMISED_HOST_IP,
+        src_ip=src_ip,
         dest_ip=NETWORK_EXTERNAL_SUSPICIOUS_IP,
         dest_port=443,
         src_port=51520 + seq,
@@ -1102,11 +1108,12 @@ def run_network_ids_c2(log_file: str, *, offset_seconds: int = 0, seq: int = 0) 
     )
 
 
-def run_network_ids_exploit(log_file: str, *, src_ip: str = NETWORK_RECON_ATTACKER_IP, offset_seconds: int = 0, seq: int = 0) -> None:
+def run_network_ids_exploit(log_file: str, *, src_ip: str = NETWORK_RECON_ATTACKER_IP, source_ip: str | None = None, offset_seconds: int = 0, seq: int = 0) -> None:
+    effective_src = _effective_source_ip(source_ip, src_ip)
     _run_single_ids_scenario(
         scenario="network_ids_exploit",
         log_file=log_file,
-        src_ip=src_ip,
+        src_ip=effective_src,
         dest_ip=NETWORK_RECON_VICTIM_IP,
         dest_port=80,
         src_port=51530 + seq,
@@ -1123,11 +1130,12 @@ def run_network_ids_exploit(log_file: str, *, src_ip: str = NETWORK_RECON_ATTACK
     )
 
 
-def run_network_ids_scan_recon(log_file: str, *, offset_seconds: int = 0, seq: int = 0) -> None:
+def run_network_ids_scan_recon(log_file: str, *, source_ip: str | None = None, offset_seconds: int = 0, seq: int = 0) -> None:
+    src_ip = _effective_source_ip(source_ip, NETWORK_RECON_ATTACKER_IP)
     _run_single_ids_scenario(
         scenario="network_ids_scan_recon",
         log_file=log_file,
-        src_ip=NETWORK_RECON_ATTACKER_IP,
+        src_ip=src_ip,
         dest_ip=NETWORK_RECON_VICTIM_IP,
         dest_port=22,
         src_port=51540 + seq,
@@ -1144,11 +1152,12 @@ def run_network_ids_scan_recon(log_file: str, *, offset_seconds: int = 0, seq: i
     )
 
 
-def run_network_ids_credential(log_file: str, *, src_ip: str = NETWORK_RECON_ATTACKER_IP, offset_seconds: int = 0, seq: int = 0) -> None:
+def run_network_ids_credential(log_file: str, *, src_ip: str = NETWORK_RECON_ATTACKER_IP, source_ip: str | None = None, offset_seconds: int = 0, seq: int = 0) -> None:
+    effective_src = _effective_source_ip(source_ip, src_ip)
     _run_single_ids_scenario(
         scenario="network_ids_credential",
         log_file=log_file,
-        src_ip=src_ip,
+        src_ip=effective_src,
         dest_ip=NETWORK_RECON_VICTIM_IP,
         dest_port=21,
         src_port=51550 + seq,
@@ -1165,11 +1174,12 @@ def run_network_ids_credential(log_file: str, *, src_ip: str = NETWORK_RECON_ATT
     )
 
 
-def run_network_ids_exfiltration(log_file: str, *, offset_seconds: int = 0, seq: int = 0) -> None:
+def run_network_ids_exfiltration(log_file: str, *, source_ip: str | None = None, offset_seconds: int = 0, seq: int = 0) -> None:
+    src_ip = _effective_source_ip(source_ip, NETWORK_COMPROMISED_HOST_IP)
     _run_single_ids_scenario(
         scenario="network_ids_exfiltration",
         log_file=log_file,
-        src_ip=NETWORK_COMPROMISED_HOST_IP,
+        src_ip=src_ip,
         dest_ip=NETWORK_EXTERNAL_SUSPICIOUS_IP,
         dest_port=443,
         src_port=51560 + seq,
@@ -1185,11 +1195,12 @@ def run_network_ids_exfiltration(log_file: str, *, offset_seconds: int = 0, seq:
     )
 
 
-def run_network_ids_policy(log_file: str, *, offset_seconds: int = 0, seq: int = 0) -> None:
+def run_network_ids_policy(log_file: str, *, source_ip: str | None = None, offset_seconds: int = 0, seq: int = 0) -> None:
+    src_ip = _effective_source_ip(source_ip, NETWORK_COMPROMISED_HOST_IP)
     _run_single_ids_scenario(
         scenario="network_ids_policy",
         log_file=log_file,
-        src_ip=NETWORK_COMPROMISED_HOST_IP,
+        src_ip=src_ip,
         dest_ip=NETWORK_EXTERNAL_SUSPICIOUS_IP,
         dest_port=443,
         src_port=51570 + seq,
@@ -1205,11 +1216,12 @@ def run_network_ids_policy(log_file: str, *, offset_seconds: int = 0, seq: int =
     )
 
 
-def run_network_ids_protocol_anomaly(log_file: str, *, offset_seconds: int = 0, seq: int = 0) -> None:
+def run_network_ids_protocol_anomaly(log_file: str, *, source_ip: str | None = None, offset_seconds: int = 0, seq: int = 0) -> None:
+    src_ip = _effective_source_ip(source_ip, NETWORK_COMPROMISED_HOST_IP)
     _run_single_ids_scenario(
         scenario="network_ids_protocol_anomaly",
         log_file=log_file,
-        src_ip=NETWORK_COMPROMISED_HOST_IP,
+        src_ip=src_ip,
         dest_ip=NETWORK_EXTERNAL_SUSPICIOUS_IP,
         dest_port=443,
         src_port=51580 + seq,
@@ -1225,11 +1237,12 @@ def run_network_ids_protocol_anomaly(log_file: str, *, offset_seconds: int = 0, 
     )
 
 
-def run_network_ids_unknown_high(log_file: str, *, offset_seconds: int = 0, seq: int = 0) -> None:
+def run_network_ids_unknown_high(log_file: str, *, source_ip: str | None = None, offset_seconds: int = 0, seq: int = 0) -> None:
+    src_ip = _effective_source_ip(source_ip, NETWORK_COMPROMISED_HOST_IP)
     _run_single_ids_scenario(
         scenario="network_ids_unknown_high",
         log_file=log_file,
-        src_ip=NETWORK_COMPROMISED_HOST_IP,
+        src_ip=src_ip,
         dest_ip=NETWORK_EXTERNAL_SUSPICIOUS_IP,
         dest_port=443,
         src_port=51590 + seq,
@@ -1251,15 +1264,16 @@ def run_network_ids_unknown_high(log_file: str, *, offset_seconds: int = 0, seq:
     )
 
 
-def run_network_ids_c2_with_egress(count: int, log_file: str) -> None:
+def run_network_ids_c2_with_egress(count: int, log_file: str, source_ip: str | None = None) -> None:
     """
     Trigger behavioral suspicious outbound, then IDS C2 from same source IP.
     """
+    src_ip = _effective_source_ip(source_ip, NETWORK_COMPROMISED_HOST_IP)
     banner("IDS C2 + Behavioral Egress Combo")
     expect("Expected correlation: IDS C2 confirms/promotes Suspicious Network Egress to Possible Command and Control")
 
-    run_network_suspicious_outbound(count, log_file)
-    run_network_ids_c2(log_file, offset_seconds=10, seq=100)
+    run_network_suspicious_outbound(count, log_file, source_ip=source_ip)
+    run_network_ids_c2(log_file, source_ip=source_ip, offset_seconds=10, seq=100)
 
     _ids_summary(
         scenario="network_ids_c2_with_egress",
@@ -1267,20 +1281,21 @@ def run_network_ids_c2_with_egress(count: int, log_file: str) -> None:
         signature="ET MALWARE Possible Cobalt Strike Beacon C2",
         expected_alert="network_ids_c2",
         expected_incident="IDS / Command and Control + behavioral C2 correlation",
-        source_ip=NETWORK_COMPROMISED_HOST_IP,
+        source_ip=src_ip,
         correlation="behavioral egress + IDS C2 → Possible Command and Control",
     )
 
 
-def run_network_ids_scan_with_recon(count: int, log_file: str) -> None:
+def run_network_ids_scan_with_recon(count: int, log_file: str, source_ip: str | None = None) -> None:
     """
     Trigger behavioral recon, then IDS scan/recon from same source IP.
     """
+    src_ip = _effective_source_ip(source_ip, NETWORK_RECON_ATTACKER_IP)
     banner("IDS Scan + Behavioral Recon Combo")
     expect("Expected correlation: IDS scan confirms Network Reconnaissance")
 
-    run_network_recon_combo(count, log_file)
-    run_network_ids_scan_recon(log_file, offset_seconds=10, seq=110)
+    run_network_recon_combo(count, log_file, source_ip=source_ip)
+    run_network_ids_scan_recon(log_file, source_ip=source_ip, offset_seconds=10, seq=110)
 
     _ids_summary(
         scenario="network_ids_scan_with_recon",
@@ -1288,20 +1303,21 @@ def run_network_ids_scan_with_recon(count: int, log_file: str) -> None:
         signature="ET SCAN Nmap Scripting Engine User-Agent Detected",
         expected_alert="network_ids_scan_recon",
         expected_incident="IDS / Network Reconnaissance + behavioral recon correlation",
-        source_ip=NETWORK_RECON_ATTACKER_IP,
+        source_ip=src_ip,
         correlation="behavioral recon + IDS scan → Network Reconnaissance escalation",
     )
 
 
-def run_network_ids_exfil_with_dns(count: int, log_file: str) -> None:
+def run_network_ids_exfil_with_dns(count: int, log_file: str, source_ip: str | None = None) -> None:
     """
     Trigger behavioral suspicious DNS, then IDS exfiltration from same source IP.
     """
+    src_ip = _effective_source_ip(source_ip, NETWORK_COMPROMISED_HOST_IP)
     banner("IDS Exfiltration + Behavioral DNS Combo")
     expect("Expected correlation: IDS exfiltration enriches DNS staging / C2 story")
 
-    run_network_suspicious_dns(count, log_file)
-    run_network_ids_exfiltration(log_file, offset_seconds=10, seq=120)
+    run_network_suspicious_dns(count, log_file, source_ip=source_ip)
+    run_network_ids_exfiltration(log_file, source_ip=source_ip, offset_seconds=10, seq=120)
 
     _ids_summary(
         scenario="network_ids_exfil_with_dns",
@@ -1309,20 +1325,21 @@ def run_network_ids_exfil_with_dns(count: int, log_file: str) -> None:
         signature="ET TROJAN Possible DNS Tunnel Data Exfiltration",
         expected_alert="network_ids_exfiltration",
         expected_incident="IDS / Possible Data Exfiltration + DNS/C2 correlation",
-        source_ip=NETWORK_COMPROMISED_HOST_IP,
+        source_ip=src_ip,
         correlation="behavioral DNS + IDS exfiltration → DNS staging / C2 evidence",
     )
 
 
-def run_network_ids_exploit_with_web(count: int, network_log_file: str, web_log_file: str) -> None:
+def run_network_ids_exploit_with_web(count: int, network_log_file: str, web_log_file: str, source_ip: str | None = None) -> None:
     """
     Trigger web SQL injection, then IDS exploit from same source IP.
     """
+    src_ip = _effective_source_ip(source_ip, NETWORK_RECON_ATTACKER_IP)
     banner("IDS Exploit + Web Attack Combo")
     expect("Expected correlation: IDS exploit confirms compatible web attack")
 
-    run_web_sql_injection(NETWORK_RECON_ATTACKER_IP, count, web_log_file)
-    run_network_ids_exploit(network_log_file, src_ip=NETWORK_RECON_ATTACKER_IP, offset_seconds=10, seq=130)
+    run_web_sql_injection(src_ip, count, web_log_file)
+    run_network_ids_exploit(network_log_file, source_ip=source_ip, offset_seconds=10, seq=130)
 
     _ids_summary(
         scenario="network_ids_exploit_with_web",
@@ -1330,20 +1347,21 @@ def run_network_ids_exploit_with_web(count: int, network_log_file: str, web_log_
         signature="ET EXPLOIT Possible Remote Code Execution CVE Attempt",
         expected_alert="network_ids_exploit",
         expected_incident="IDS / Exploit Attempt + web incident correlation",
-        source_ip=NETWORK_RECON_ATTACKER_IP,
+        source_ip=src_ip,
         correlation="web attack + IDS exploit → web incident IDS confirmation",
     )
 
 
-def run_network_ids_credential_with_auth(count: int, network_log_file: str, auth_log_file: str, user: str) -> None:
+def run_network_ids_credential_with_auth(count: int, network_log_file: str, auth_log_file: str, user: str, source_ip: str | None = None) -> None:
     """
     Trigger SSH brute force, then IDS credential alert from same source IP.
     """
+    src_ip = _effective_source_ip(source_ip, NETWORK_RECON_ATTACKER_IP)
     banner("IDS Credential + Auth Attack Combo")
     expect("Expected correlation: IDS credential confirms auth attack")
 
-    run_ssh_bruteforce(NETWORK_RECON_ATTACKER_IP, user, count, auth_log_file)
-    run_network_ids_credential(network_log_file, src_ip=NETWORK_RECON_ATTACKER_IP, offset_seconds=10, seq=140)
+    run_ssh_bruteforce(src_ip, user, count, auth_log_file)
+    run_network_ids_credential(network_log_file, source_ip=source_ip, offset_seconds=10, seq=140)
 
     _ids_summary(
         scenario="network_ids_credential_with_auth",
@@ -1351,7 +1369,7 @@ def run_network_ids_credential_with_auth(count: int, network_log_file: str, auth
         signature="ET CREDENTIALS Possible Cleartext Password Exposure",
         expected_alert="network_ids_credential",
         expected_incident="IDS / Credential Attack + auth incident correlation",
-        source_ip=NETWORK_RECON_ATTACKER_IP,
+        source_ip=src_ip,
         correlation="auth brute force + IDS credential → auth incident IDS confirmation",
     )
 
@@ -1382,14 +1400,14 @@ def _network_summary(
         print(f"  {CYAN}[NETWORK]{RESET} Expected correlation: {correlation}")
 
 
-def run_network_port_scan(count: int, log_file: str) -> None:
+def run_network_port_scan(count: int, log_file: str, source_ip: str | None = None) -> None:
     """
     Simulate a network port scan:
     same source IP + same destination IP + many unique destination ports.
     """
     scenario = "network_port_scan"
     event_count = _network_min_count(scenario, count)
-    src_ip = NETWORK_RECON_ATTACKER_IP
+    src_ip = _effective_source_ip(source_ip, NETWORK_RECON_ATTACKER_IP)
     dest_ip = NETWORK_RECON_VICTIM_IP
 
     banner("Network Port Scan  [Suricata EVE JSON]")
@@ -1432,14 +1450,14 @@ def run_network_port_scan(count: int, log_file: str) -> None:
     )
 
 
-def run_network_internal_sweep(count: int, log_file: str) -> None:
+def run_network_internal_sweep(count: int, log_file: str, source_ip: str | None = None) -> None:
     """
     Simulate an internal sweep:
     same source IP + same destination port + many unique destination IPs.
     """
     scenario = "network_internal_sweep"
     event_count = _network_min_count(scenario, count)
-    src_ip = NETWORK_RECON_ATTACKER_IP
+    src_ip = _effective_source_ip(source_ip, NETWORK_RECON_ATTACKER_IP)
     dest_port = 22
 
     banner("Network Internal Sweep  [Suricata EVE JSON]")
@@ -1482,14 +1500,14 @@ def run_network_internal_sweep(count: int, log_file: str) -> None:
     )
 
 
-def run_network_suspicious_outbound(count: int, log_file: str) -> None:
+def run_network_suspicious_outbound(count: int, log_file: str, source_ip: str | None = None) -> None:
     """
     Simulate suspicious outbound egress:
     internal host connects to suspicious external destination port.
     """
     scenario = "network_suspicious_outbound"
     event_count = _network_min_count(scenario, count)
-    src_ip = NETWORK_COMPROMISED_HOST_IP
+    src_ip = _effective_source_ip(source_ip, NETWORK_COMPROMISED_HOST_IP)
     dest_ip = NETWORK_EXTERNAL_SUSPICIOUS_IP
 
     banner("Network Suspicious Outbound  [Suricata EVE JSON]")
@@ -1532,14 +1550,14 @@ def run_network_suspicious_outbound(count: int, log_file: str) -> None:
     )
 
 
-def run_network_c2_beaconing(count: int, log_file: str) -> None:
+def run_network_c2_beaconing(count: int, log_file: str, source_ip: str | None = None) -> None:
     """
     Simulate possible C2 beaconing:
     repeated flows from one source to the same destination IP and port.
     """
     scenario = "network_c2_beaconing"
     event_count = _network_min_count(scenario, count)
-    src_ip = NETWORK_COMPROMISED_HOST_IP
+    src_ip = _effective_source_ip(source_ip, NETWORK_COMPROMISED_HOST_IP)
     dest_ip = NETWORK_EXTERNAL_SUSPICIOUS_IP
     dest_port = 443
 
@@ -1582,7 +1600,7 @@ def run_network_c2_beaconing(count: int, log_file: str) -> None:
     )
 
 
-def run_network_suspicious_dns(count: int, log_file: str) -> None:
+def run_network_suspicious_dns(count: int, log_file: str, source_ip: str | None = None) -> None:
     """
     Simulate suspicious DNS activity:
     one source queries multiple suspicious DNS names.
@@ -1598,7 +1616,7 @@ def run_network_suspicious_dns(count: int, log_file: str) -> None:
     """
     scenario = "network_suspicious_dns"
     event_count = _network_min_count(scenario, count)
-    src_ip = NETWORK_COMPROMISED_HOST_IP
+    src_ip = _effective_source_ip(source_ip, NETWORK_COMPROMISED_HOST_IP)
 
     banner("Network Suspicious DNS  [Suricata EVE JSON]")
     info(f"Source IP: {src_ip}")
@@ -1639,16 +1657,19 @@ def run_network_suspicious_dns(count: int, log_file: str) -> None:
         source_ip=src_ip,
         expected_key=f"network::dns::src::{src_ip}",
     )
-def run_network_recon_combo(count: int, log_file: str) -> None:
+
+
+def run_network_recon_combo(count: int, log_file: str, source_ip: str | None = None) -> None:
     """
     Trigger port scan and internal sweep from the same source IP.
     """
+    src_ip = _effective_source_ip(source_ip, NETWORK_RECON_ATTACKER_IP)
     banner("Network Recon Combo  [Port Scan + Internal Sweep]")
     expect("Expected correlation → one Network Reconnaissance incident")
-    expect(f"Expected incident key → network::recon::src::{NETWORK_RECON_ATTACKER_IP}")
+    expect(f"Expected incident key → network::recon::src::{src_ip}")
 
-    run_network_port_scan(count, log_file)
-    run_network_internal_sweep(count, log_file)
+    run_network_port_scan(count, log_file, source_ip=source_ip)
+    run_network_internal_sweep(count, log_file, source_ip=source_ip)
 
     _network_summary(
         scenario="network_recon_combo",
@@ -1657,21 +1678,22 @@ def run_network_recon_combo(count: int, log_file: str) -> None:
         event_type="flow",
         expected_alert="network_port_scan + network_internal_sweep",
         expected_incident="Network Reconnaissance",
-        source_ip=NETWORK_RECON_ATTACKER_IP,
-        expected_key=f"network::recon::src::{NETWORK_RECON_ATTACKER_IP}",
+        source_ip=src_ip,
+        expected_key=f"network::recon::src::{src_ip}",
         correlation="port scan + internal sweep → Network Reconnaissance escalation",
     )
 
 
-def run_network_dns_outbound_combo(count: int, log_file: str) -> None:
+def run_network_dns_outbound_combo(count: int, log_file: str, source_ip: str | None = None) -> None:
     """
     Trigger suspicious DNS and suspicious outbound from the same source IP.
     """
+    src_ip = _effective_source_ip(source_ip, NETWORK_COMPROMISED_HOST_IP)
     banner("Network DNS + Outbound Combo")
     expect("Expected correlation: DNS + outbound → Possible Command and Control")
 
-    run_network_suspicious_dns(count, log_file)
-    run_network_suspicious_outbound(count, log_file)
+    run_network_suspicious_dns(count, log_file, source_ip=source_ip)
+    run_network_suspicious_outbound(count, log_file, source_ip=source_ip)
 
     _network_summary(
         scenario="network_dns_outbound_combo",
@@ -1680,21 +1702,22 @@ def run_network_dns_outbound_combo(count: int, log_file: str) -> None:
         event_type="dns + flow",
         expected_alert="network_suspicious_dns + network_suspicious_outbound",
         expected_incident="Possible Command and Control",
-        source_ip=NETWORK_COMPROMISED_HOST_IP,
-        expected_key=f"network::c2::src::{NETWORK_COMPROMISED_HOST_IP}",
+        source_ip=src_ip,
+        expected_key=f"network::c2::src::{src_ip}",
         correlation="DNS + outbound → Possible Command and Control",
     )
 
 
-def run_network_outbound_beacon_combo(count: int, log_file: str) -> None:
+def run_network_outbound_beacon_combo(count: int, log_file: str, source_ip: str | None = None) -> None:
     """
     Trigger suspicious outbound and C2 beaconing from the same source IP.
     """
+    src_ip = _effective_source_ip(source_ip, NETWORK_COMPROMISED_HOST_IP)
     banner("Network Outbound + Beacon Combo")
     expect("Expected correlation: suspicious outbound + beaconing → Possible Command and Control")
 
-    run_network_suspicious_outbound(count, log_file)
-    run_network_c2_beaconing(count, log_file)
+    run_network_suspicious_outbound(count, log_file, source_ip=source_ip)
+    run_network_c2_beaconing(count, log_file, source_ip=source_ip)
 
     _network_summary(
         scenario="network_outbound_beacon_combo",
@@ -1703,22 +1726,23 @@ def run_network_outbound_beacon_combo(count: int, log_file: str) -> None:
         event_type="flow",
         expected_alert="network_suspicious_outbound + network_c2_beaconing",
         expected_incident="Possible Command and Control",
-        source_ip=NETWORK_COMPROMISED_HOST_IP,
-        expected_key=f"network::c2::src::{NETWORK_COMPROMISED_HOST_IP}",
+        source_ip=src_ip,
+        expected_key=f"network::c2::src::{src_ip}",
         correlation="outbound + beaconing → Possible Command and Control",
     )
 
 
-def run_network_port_scan_repeat(count: int, log_file: str) -> None:
+def run_network_port_scan_repeat(count: int, log_file: str, source_ip: str | None = None) -> None:
     """
     Run port scan twice quickly to test incident cooldown behavior.
     """
+    src_ip = _effective_source_ip(source_ip, NETWORK_RECON_ATTACKER_IP)
     banner("Network Port Scan Repeat  [Cooldown Test]")
     expect("First run → creates/updates Network Reconnaissance")
     expect("Second run → cooldown skip or update depending on incident_engine logic")
 
-    run_network_port_scan(count, log_file)
-    run_network_port_scan(count, log_file)
+    run_network_port_scan(count, log_file, source_ip=source_ip)
+    run_network_port_scan(count, log_file, source_ip=source_ip)
 
     _network_summary(
         scenario="network_port_scan_repeat",
@@ -1727,13 +1751,13 @@ def run_network_port_scan_repeat(count: int, log_file: str) -> None:
         event_type="flow",
         expected_alert="network_port_scan repeated",
         expected_incident="Network Reconnaissance cooldown/update test",
-        source_ip=NETWORK_RECON_ATTACKER_IP,
-        expected_key=f"network::recon::src::{NETWORK_RECON_ATTACKER_IP}",
+        source_ip=src_ip,
+        expected_key=f"network::recon::src::{src_ip}",
         correlation="repeat same recon source → cooldown behavior",
     )
 
 
-def run_network_suspicious_outbound_repeat(count: int, log_file: str) -> None:
+def run_network_suspicious_outbound_repeat(count: int, log_file: str, source_ip: str | None = None) -> None:
     """
     Write repeated suspicious outbound flows to test egress updates and possible
     promotion to C2 depending on incident_engine thresholds.
@@ -1743,7 +1767,7 @@ def run_network_suspicious_outbound_repeat(count: int, log_file: str) -> None:
     expect("Possible promotion → Possible Command and Control if incident_engine threshold is reached")
 
     event_count = max(count, len(NETWORK_SUSPICIOUS_PORTS))
-    src_ip = NETWORK_COMPROMISED_HOST_IP
+    src_ip = _effective_source_ip(source_ip, NETWORK_COMPROMISED_HOST_IP)
     dest_ip = NETWORK_EXTERNAL_SUSPICIOUS_IP
 
     phase("Network phase — repeated suspicious outbound ports")
@@ -2445,6 +2469,11 @@ def main() -> None:
                         help=f"Source IP for SSH/sudo scenarios  (default: {DEFAULT_IP})")
     parser.add_argument("--web-ip",     default=DEFAULT_WEB_IP,
                         help=f"Source IP for web attack scenarios  (default: {DEFAULT_WEB_IP})")
+    parser.add_argument(
+        "--source-ip",
+        default=None,
+        help="Override source IP for scenarios, useful for cross-layer correlation testing.",
+    )
     parser.add_argument("--user",       default=DEFAULT_USER,
                         help=f"Target username  (default: {DEFAULT_USER})")
     parser.add_argument("--count",      type=int, default=6,
@@ -2497,133 +2526,139 @@ def main() -> None:
         _print_help_scenarios()
         return
 
+    effective_ip = args.source_ip or args.ip
+    effective_web_ip = args.source_ip or args.web_ip
+
     print(f"\n{DIM}scenario={args.scenario}  ip={args.ip}  web-ip={args.web_ip}  "
-          f"user={args.user}  count={args.count}  sudo-count={args.sudo_count}  "
-          f"log-file={args.log_file}  web-log-file={args.web_log_file}  "
-          f"network-log-file={args.network_log_file}  "
+          f"source-ip={args.source_ip}  user={args.user}  count={args.count}  "
+          f"sudo-count={args.sudo_count}  log-file={args.log_file}  "
+          f"web-log-file={args.web_log_file}  network-log-file={args.network_log_file}  "
           f"hostname={SIMULATOR_HOSTNAME}{RESET}")
 
     s   = args.scenario
     lf  = args.log_file
     wlf = args.web_log_file
     nlf = args.network_log_file
+    src_ip_override = args.source_ip
 
     # ── Web attack-only  (v3.1) ───────────────────────────────────────────────
     if s == "web_path_traversal":
-        run_web_path_traversal(args.web_ip, args.count, wlf)
+        run_web_path_traversal(effective_web_ip, args.count, wlf)
 
     elif s == "web_sql_injection":
-        run_web_sql_injection(args.web_ip, args.count, wlf)
+        run_web_sql_injection(effective_web_ip, args.count, wlf)
 
     elif s == "web_xss":
-        run_web_xss(args.web_ip, args.count, wlf)
+        run_web_xss(effective_web_ip, args.count, wlf)
 
     elif s == "web_sensitive_file":
-        run_web_sensitive_file(args.web_ip, args.count, wlf)
+        run_web_sensitive_file(effective_web_ip, args.count, wlf)
 
     elif s == "web_404_scanning":
-        run_web_404_scanning(args.web_ip, args.count, wlf)
+        run_web_404_scanning(effective_web_ip, args.count, wlf)
 
     # ── Network attack-only  (Suricata EVE JSON) ──────────────────────────────
     elif s == "network_port_scan":
-        run_network_port_scan(args.count, nlf)
+        run_network_port_scan(args.count, nlf, source_ip=src_ip_override)
 
     elif s == "network_internal_sweep":
-        run_network_internal_sweep(args.count, nlf)
+        run_network_internal_sweep(args.count, nlf, source_ip=src_ip_override)
 
     elif s == "network_suspicious_outbound":
-        run_network_suspicious_outbound(args.count, nlf)
+        run_network_suspicious_outbound(args.count, nlf, source_ip=src_ip_override)
 
     elif s == "network_c2_beaconing":
-        run_network_c2_beaconing(args.count, nlf)
+        run_network_c2_beaconing(args.count, nlf, source_ip=src_ip_override)
 
     elif s == "network_suspicious_dns":
-        run_network_suspicious_dns(args.count, nlf)
+        run_network_suspicious_dns(args.count, nlf, source_ip=src_ip_override)
 
     elif s == "network_recon_combo":
-        run_network_recon_combo(args.count, nlf)
+        run_network_recon_combo(args.count, nlf, source_ip=src_ip_override)
 
     elif s == "network_dns_outbound_combo":
-        run_network_dns_outbound_combo(args.count, nlf)
+        run_network_dns_outbound_combo(args.count, nlf, source_ip=src_ip_override)
 
     elif s == "network_outbound_beacon_combo":
-        run_network_outbound_beacon_combo(args.count, nlf)
+        run_network_outbound_beacon_combo(args.count, nlf, source_ip=src_ip_override)
 
     elif s == "network_port_scan_repeat":
-        run_network_port_scan_repeat(args.count, nlf)
+        run_network_port_scan_repeat(args.count, nlf, source_ip=src_ip_override)
 
     elif s == "network_suspicious_outbound_repeat":
-        run_network_suspicious_outbound_repeat(args.count, nlf)
+        run_network_suspicious_outbound_repeat(args.count, nlf, source_ip=src_ip_override)
         # ── IDS attack-only  (Suricata EVE alert JSON) ────────────────────────────
     elif s == "network_ids_malware":
-        run_network_ids_malware(nlf)
+        run_network_ids_malware(nlf, source_ip=src_ip_override)
 
     elif s == "network_ids_c2":
-        run_network_ids_c2(nlf)
+        run_network_ids_c2(nlf, source_ip=src_ip_override)
 
     elif s == "network_ids_exploit":
-        run_network_ids_exploit(nlf)
+        run_network_ids_exploit(nlf, source_ip=src_ip_override)
 
     elif s == "network_ids_scan_recon":
-        run_network_ids_scan_recon(nlf)
+        run_network_ids_scan_recon(nlf, source_ip=src_ip_override)
 
     elif s == "network_ids_credential":
-        run_network_ids_credential(nlf)
+        run_network_ids_credential(nlf, source_ip=src_ip_override)
 
     elif s == "network_ids_exfiltration":
-        run_network_ids_exfiltration(nlf)
+        run_network_ids_exfiltration(nlf, source_ip=src_ip_override)
 
     elif s == "network_ids_policy":
-        run_network_ids_policy(nlf)
+        run_network_ids_policy(nlf, source_ip=src_ip_override)
 
     elif s == "network_ids_protocol_anomaly":
-        run_network_ids_protocol_anomaly(nlf)
+        run_network_ids_protocol_anomaly(nlf, source_ip=src_ip_override)
 
     elif s == "network_ids_unknown_high":
-        run_network_ids_unknown_high(nlf)
+        run_network_ids_unknown_high(nlf, source_ip=src_ip_override)
 
     elif s == "network_ids_c2_with_egress":
-        run_network_ids_c2_with_egress(args.count, nlf)
+        run_network_ids_c2_with_egress(args.count, nlf, source_ip=src_ip_override)
 
     elif s == "network_ids_scan_with_recon":
-        run_network_ids_scan_with_recon(args.count, nlf)
+        run_network_ids_scan_with_recon(args.count, nlf, source_ip=src_ip_override)
 
     elif s == "network_ids_exfil_with_dns":
-        run_network_ids_exfil_with_dns(args.count, nlf)
+        run_network_ids_exfil_with_dns(args.count, nlf, source_ip=src_ip_override)
 
     elif s == "network_ids_exploit_with_web":
-        run_network_ids_exploit_with_web(args.count, nlf, wlf)
+        run_network_ids_exploit_with_web(args.count, nlf, wlf, source_ip=src_ip_override)
 
     elif s == "network_ids_credential_with_auth":
-        run_network_ids_credential_with_auth(args.count, nlf, lf, args.user)
+        run_network_ids_credential_with_auth(
+            args.count, nlf, lf, args.user, source_ip=src_ip_override
+        )
 
     # ── Pure attack-only (SSH/sudo) ───────────────────────────────────────────
     elif s == "ssh_bruteforce":
-        run_ssh_bruteforce(args.ip, args.user, args.count, lf)
+        run_ssh_bruteforce(effective_ip, args.user, args.count, lf)
     elif s == "password_spray":
-        run_password_spray(args.ip, args.count, lf)
+        run_password_spray(effective_ip, args.count, lf)
     elif s == "user_bruteforce":
         run_user_bruteforce(args.user, args.count, lf)
     elif s == "distributed_bruteforce":
         run_distributed_bruteforce(args.user, args.count, lf)
     elif s == "sudo_bruteforce":
-        run_sudo_bruteforce(args.ip, args.user, args.count, lf)
+        run_sudo_bruteforce(effective_ip, args.user, args.count, lf)
 
     # ── Pure success-only ─────────────────────────────────────────────────────
     elif s == "ssh_success_only":
-        run_ssh_success_only(args.ip, args.user, args.count, lf)
+        run_ssh_success_only(effective_ip, args.user, args.count, lf)
     elif s == "sudo_success_only":
-        run_sudo_success_only(args.ip, args.user, args.count, lf)
+        run_sudo_success_only(effective_ip, args.user, args.count, lf)
 
     # ── 2-stage compound ──────────────────────────────────────────────────────
     elif s in ("full_attack_chain",
                "ssh_success_after_failures",
                "scenario_ssh_bruteforce_compromise"):
-        run_full_attack_chain(args.ip, args.user, args.count, lf)
+        run_full_attack_chain(effective_ip, args.user, args.count, lf)
 
     elif s in ("password_spray_chain",
                "scenario_password_spray_compromise"):
-        run_password_spray_chain(args.ip, args.count, lf)
+        run_password_spray_chain(effective_ip, args.count, lf)
 
     elif s in ("targeted_account_chain",
                "scenario_targeted_account_compromise"):
@@ -2636,7 +2671,7 @@ def main() -> None:
     # ── 3-stage compound ──────────────────────────────────────────────────────
     elif s in ("full_privesc_chain",
                "scenario_post_compromise_privesc"):
-        run_full_privesc_chain(args.ip, args.user, args.count, args.sudo_count, lf)
+        run_full_privesc_chain(effective_ip, args.user, args.count, args.sudo_count, lf)
 
     elif s in ("targeted_privesc_chain",
                "scenario_targeted_3stage"):
