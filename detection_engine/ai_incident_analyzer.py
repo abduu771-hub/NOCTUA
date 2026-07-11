@@ -5,9 +5,11 @@ import logging
 import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
-
-from elasticsearch import Elasticsearch
 from openai import OpenAI
+
+
+
+from .lifecycle_contract import INCIDENT_STATUS_CLOSED
 
 try:
     from detection_engine.automation_notifier import AutomationNotifier
@@ -23,6 +25,8 @@ DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 REQUIRED_AI_KEYS = [
     "summary",
     "attack_story",
+    "timeline",
+    "attack_chain",
     "severity_reasoning",
     "confidence",
     "evidence",
@@ -33,6 +37,9 @@ REQUIRED_AI_KEYS = [
 ]
 
 LIST_FIELDS = [
+    "attack_story",
+    "timeline",
+    "attack_chain",
     "evidence",
     "recommended_actions",
     "investigation_steps",
@@ -60,7 +67,7 @@ SYSTEM_PROMPT = """You are the AI Incident Analyst for ABUR - SIEM, a custom SIE
 
 ABUR - SIEM already detects attacks using deterministic rules.
 You are NOT responsible for detecting new attacks.
-You are responsible for explaining the incident, summarizing evidence, reasoning about severity, and recommending safe response actions.
+You are responsible for explaining the incident, building a structured intelligence report, and recommending safe response actions.
 
 Strict rules:
 - Return ONLY valid JSON.
@@ -81,6 +88,8 @@ Strict rules:
 Required JSON keys:
 summary,
 attack_story,
+timeline,
+attack_chain,
 severity_reasoning,
 confidence,
 evidence,
@@ -90,12 +99,17 @@ possible_false_positives,
 soc_ticket_summary.
 
 Field requirements:
-- confidence must be one of: LOW, MEDIUM, HIGH.
-- evidence must be a list of strings using only provided evidence.
-- recommended_actions must be a list of safe response actions.
-- investigation_steps must be a list of checks the analyst should perform.
-- possible_false_positives must be a list of possible benign explanations.
-- soc_ticket_summary must be short and ticket-ready.
+- summary: string. One paragraph SOC-readable overview of the incident.
+- attack_story: list of strings. Step-by-step SOC narrative. No raw logs, no IDs.
+- timeline: list of objects. Each object must have: { "timestamp": "", "event": "", "source_ip": "", "host": "" }. Sorted ascending by timestamp. Derived only from provided alert data. Use "not available" for missing fields.
+- attack_chain: list of objects. Map the incident into MITRE ATT&CK phases. Each object must have: { "phase": "", "technique": "", "description": "" }. Examples: ssh_bruteforce → Credential Access / Brute Force (T1110). password_spray → Credential Access / Password Spraying (T1110.003). web_path_traversal → Initial Access (T1190) + Exploitation. c2_beaconing → Command and Control / Application Layer Protocol (T1071). distributed_bruteforce → Credential Access / Brute Force (T1110). network_port_scan → Reconnaissance / Active Scanning (T1595). network_suspicious_dns → Command and Control / DNS (T1071.004). ids_malware → Execution / Malicious Code. Use best-fit MITRE phase when incident type does not map exactly.
+- severity_reasoning: string. Explain why this severity level was assigned.
+- confidence: one of LOW, MEDIUM, HIGH.
+- evidence: list of strings. Key indicators: IPs, users, frequency patterns, rule triggers. Only from provided data.
+- recommended_actions: list of strings. SOC response actions such as isolate host, block IP, reset credentials, investigate lateral movement.
+- investigation_steps: list of strings. Checks the analyst should perform.
+- possible_false_positives: list of strings. Possible benign explanations.
+- soc_ticket_summary: string. Short and ticket-ready.
 """
 
 
@@ -122,53 +136,39 @@ class AIIncidentAnalyzer:
         return self.enabled
 
     def should_analyze(self, incident_doc: Dict[str, Any], force: bool = False) -> bool:
-        if force:
-            return True
-
         if not self.enabled:
             return False
 
         incident = self._as_dict(incident_doc.get("incident"))
         ai_analysis = self._as_dict(incident_doc.get("ai_analysis"))
 
+        # AI is strictly read-only. It only skips closed incidents.
+        # It never modifies status or triggers lifecycle changes.
         status = self._string(
-            incident.get("status")
-            or incident_doc.get("status")
+            incident.get("status") or incident_doc.get("status")
         ).lower()
 
-        if status == "closed":
+        if status == INCIDENT_STATUS_CLOSED:
             return False
+
+        if force:
+            return True
 
         if ai_analysis.get("generated_at"):
-            return False
+            # Re-analyze if prior result was a blank fallback stub
+            summary = self._string(ai_analysis.get("summary", ""))
+            story   = ai_analysis.get("attack_story", [])
+            chain   = ai_analysis.get("attack_chain", [])
+            is_stub = (
+                summary in {"", "not available"}
+                and not story
+                and not chain
+            )
+            if not is_stub:
+                return False
+            log.info("Prior ai_analysis is a blank stub — re-analyzing")
 
-        severity = self._string(
-            incident.get("severity")
-            or incident_doc.get("severity")
-        ).upper()
-
-        if severity in {"HIGH", "CRITICAL"}:
-            return True
-
-        if self._bool(
-            incident.get("is_cross_layer")
-            or incident_doc.get("is_cross_layer")
-        ):
-            return True
-
-        incident_type = self._string(
-            incident.get("type")
-            or incident_doc.get("type")
-        ).lower()
-
-        if not incident_type:
-            return False
-
-        return any(
-            important_type in incident_type
-            for important_type in IMPORTANT_INCIDENT_TYPES
-        )
-
+        return True
     def build_incident_payload(self, incident_doc: Dict[str, Any]) -> Dict[str, Any]:
         incident = self._as_dict(incident_doc.get("incident"))
         source = self._as_dict(incident_doc.get("source"))
@@ -299,6 +299,7 @@ class AIIncidentAnalyzer:
         }
 
         payload["evidence"] = self._build_evidence(payload=payload)[:25]
+        payload["alerts_for_timeline"] = self._extract_alerts_for_timeline(incident_doc)
         return payload
 
     def build_prompt(self, payload: Dict[str, Any]) -> List[Dict[str, str]]:
@@ -349,6 +350,14 @@ class AIIncidentAnalyzer:
         for key in REQUIRED_AI_KEYS:
             value = analysis.get(key)
 
+            if key == "timeline":
+                cleaned[key] = self._clean_timeline(value)
+                continue
+
+            if key == "attack_chain":
+                cleaned[key] = self._clean_attack_chain(value)
+                continue
+
             if key in LIST_FIELDS:
                 cleaned[key] = self._clean_string_list(value)
                 continue
@@ -363,10 +372,42 @@ class AIIncidentAnalyzer:
         cleaned["provider"] = AI_PROVIDER
         cleaned["model"] = self.model
         cleaned["generated_at"] = datetime.now(timezone.utc).isoformat()
-        cleaned["schema_version"] = 1
+        cleaned["schema_version"] = 2
 
         return cleaned
 
+    def _clean_timeline(self, value: Any) -> List[Dict[str, str]]:
+        """Validate and normalize timeline entries."""
+        if not isinstance(value, list):
+            return []
+
+        cleaned = []
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            cleaned.append({
+                "timestamp": self._clean_string(item.get("timestamp"), default="not available"),
+                "event":     self._clean_string(item.get("event"),     default="not available"),
+                "source_ip": self._clean_string(item.get("source_ip"), default="not available"),
+                "host":      self._clean_string(item.get("host"),      default="not available"),
+            })
+        return cleaned
+
+    def _clean_attack_chain(self, value: Any) -> List[Dict[str, str]]:
+        """Validate and normalize attack chain / MITRE phase entries."""
+        if not isinstance(value, list):
+            return []
+
+        cleaned = []
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            cleaned.append({
+                "phase":       self._clean_string(item.get("phase"),       default="not available"),
+                "technique":   self._clean_string(item.get("technique"),   default="not available"),
+                "description": self._clean_string(item.get("description"), default="not available"),
+            })
+        return cleaned
     def analyze_incident(
         self,
         incident_doc: Dict[str, Any],
@@ -424,15 +465,34 @@ class AIIncidentAnalyzer:
             incident_doc=incident_doc,
             force=force,
         )
+        log.info("N8N DEBUG ai_analysis exists=%s type=%s", ai_analysis is not None, type(ai_analysis))
 
         if ai_analysis is None:
-            return False
+            log.warning("AI analysis returned None — using fallback stub for doc_id=%s", doc_id)
+            ai_analysis = {
+                "summary": "not available",
+                "attack_story": [],
+                "timeline": [],
+                "attack_chain": [],
+                "evidence": [],
+                "recommended_actions": [],
+                "severity_reasoning": "not available",
+                "confidence": "MEDIUM",
+                "investigation_steps": [],
+                "possible_false_positives": [],
+                "soc_ticket_summary": "not available",
+                "provider": AI_PROVIDER,
+                "model": self.model,
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "schema_version": 2,
+            }
 
         written = self.write_ai_analysis(
             index=index,
             doc_id=doc_id,
             ai_analysis=ai_analysis,
         )
+        log.info("N8N DEBUG write_ai_analysis written=%s doc_id=%s", written, doc_id)
 
         if written:
             incident = self._as_dict(incident_doc.get("incident"))
@@ -442,7 +502,12 @@ class AIIncidentAnalyzer:
                 default="unknown",
             )
             log.info("AI analysis written for incident type=%s doc_id=%s", incident_type, doc_id)
-
+            log.info(
+    "N8N DEBUG notifier=%s enabled=%s url=%s",
+    bool(self.notifier),
+    self.notifier.is_enabled() if self.notifier else None,
+    self.notifier.webhook_url if self.notifier else None,
+)
             if self.notifier:
                 try:
                     self.notifier.notify(index, doc_id, incident_doc, ai_analysis)
@@ -474,6 +539,9 @@ class AIIncidentAnalyzer:
                 "bool": {
                     "must": [
                         {"terms": {"incident.severity.keyword": ["HIGH", "CRITICAL"]}}
+                    ],
+                    "must_not": [
+                        {"term": {"incident.status.keyword": INCIDENT_STATUS_CLOSED}}
                     ]
                 }
             },
@@ -561,7 +629,56 @@ class AIIncidentAnalyzer:
             self._add_evidence(evidence, self._humanize_key(key), value)
 
         return self._dedupe(evidence)
+    
+    def _extract_alerts_for_timeline(self, incident_doc: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        Pull raw alert evidence suitable for timeline reconstruction.
+        Pulls from attack_context evidence fields where timestamps exist.
+        """
+        attack_context = self._as_dict(incident_doc.get("attack_context"))
+        timeline_hints: List[Dict[str, Any]] = []
 
+        first_seen = self._first_present(
+            self._as_dict(incident_doc.get("incident")).get("first_seen"),
+            attack_context.get("first_seen"),
+            default=None,
+        )
+        last_seen = self._first_present(
+            self._as_dict(incident_doc.get("incident")).get("last_seen"),
+            attack_context.get("last_seen"),
+            default=None,
+        )
+        source_ip = self._first_present(
+            self._as_dict(incident_doc.get("source")).get("ip"),
+            attack_context.get("source_ip"),
+            default="not available",
+        )
+        host = self._first_present(
+            self._as_dict(incident_doc.get("host")).get("name"),
+            default="not available",
+        )
+        incident_type = self._first_present(
+            self._as_dict(incident_doc.get("incident")).get("type"),
+            default="not available",
+        )
+
+        if first_seen:
+            timeline_hints.append({
+                "timestamp": first_seen,
+                "event": f"First {incident_type} activity detected",
+                "source_ip": source_ip,
+                "host": host,
+            })
+
+        if last_seen and last_seen != first_seen:
+            timeline_hints.append({
+                "timestamp": last_seen,
+                "event": f"Most recent {incident_type} activity observed",
+                "source_ip": source_ip,
+                "host": host,
+            })
+
+        return timeline_hints
     def _add_evidence(self, evidence: List[str], label: str, value: Any) -> None:
         if self._missing(value):
             return

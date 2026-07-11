@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIEM-AI — Mission Control</title>
+<meta name="description" content="SIEM-AI Mission Control — executive overview of your security posture, powered by AI.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="assets/css/design-system.css">
+<style>
+
+  /* ── Scroll reveal ── */
+  .reveal {
+    opacity: 0;
+    transform: translateY(28px);
+    transition: opacity 0.65s cubic-bezier(0.22,1,0.36,1), transform 0.65s cubic-bezier(0.22,1,0.36,1);
+  }
+  .reveal.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .reveal-delay-1 { transition-delay: 0.08s; }
+  .reveal-delay-2 { transition-delay: 0.16s; }
+  .reveal-delay-3 { transition-delay: 0.24s; }
+  .reveal-delay-4 { transition-delay: 0.32s; }
+
+  /* ── Open button ── */
+  .open-btn {
+    display: inline-block;
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #fff;
+    background: #0B0B0B;
+    border: 1px solid #0B0B0B;
+    border-radius: 6px;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+    letter-spacing: 0.02em;
+  }
+  .open-btn:hover {
+    background: #fff;
+    color: #0B0B0B;
+    border-color: #d1d5db;
+  }
+
+  /* ── AI Briefing block ── */
+  .briefing-card {
+    position: relative;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--white);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+    padding: 32px 40px 32px 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    overflow: visible;
+  }
+  .briefing-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .briefing-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: #991B1B;
+    
+  }
+  .briefing-timestamp {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--muted);
+    font-family: var(--ff-mono, monospace);
+    letter-spacing: 0.04em;
+  }
+  .briefing-paragraph {
+    font-size: 15px;
+    font-weight: 400;
+    color: var(--text);
+    line-height: 1.9;
+    max-width: 820px;
+    font-family:  var(--ff-mono, monospace);
+    letter-spacing: 0.01em;
+  }
+  .briefing-signals {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .signal-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 14px;
+    border: 1px solid var(--border);
+    border-radius: 100px;
+    background: var(--bg);
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--text);
+    letter-spacing: 0.02em;
+  }
+  .signal-pill-label {
+    color: var(--muted);
+    font-size: 10.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .signal-pill-sep { color: var(--border); font-weight: 300; }
+  .signal-pill-val {
+    font-weight: 600;
+    color: var(--text);
+    font-family: var(--ff-mono, monospace);
+    font-size: 11px;
+  }
+
+  /* trend colors */
+  .trend-rising   { color: #991B1B; }
+  .trend-stable   { color: #B45309; }
+  .trend-declining { color: #15803D; }
+
+  /* ── Severity Distribution Bar ── */
+  .dist-section {
+    padding: 0;
+  }
+  .dist-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 20px;
+    font-family: Georgia, 'Times New Roman', serif;
+  }
+  .dist-bar-track {
+    display: flex;
+    width: 100%;
+    height: 10px;
+    border-radius: 100px;
+    overflow: hidden;
+    gap: 2px;
+  }
+  .dist-segment {
+    height: 100%;
+    border-radius: 100px;
+    transition: filter 0.2s ease, transform 0.2s ease;
+    position: relative;
+    cursor: default;
+    min-width: 4px;
+  }
+  .dist-segment:hover { filter: brightness(1.12); }
+
+  .dist-seg-critical { background: #991B1B; }
+  .dist-seg-high     { background: #C2410C; }
+  .dist-seg-medium   { background: #D97706; }
+  .dist-seg-low      { background: #16A34A; }
+
+  .dist-counts {
+    display: flex;
+    margin-top: 16px;
+    gap: 2px;
+  }
+  .dist-count-col {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    transition: opacity 0.2s;
+  }
+  .dist-count-col:hover { opacity: 0.75; }
+  .dist-count-num {
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1;
+    font-family: Georgia, 'Times New Roman', serif;
+    letter-spacing: -0.02em;
+  }
+  .dist-count-lbl {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .dist-count-pct {
+    font-size: 10.5px;
+    font-weight: 500;
+    color: var(--muted);
+    font-family: var(--ff-mono, monospace);
+  }
+  .num-critical { color: #991B1B; }
+  .num-high     { color: #C2410C; }
+  .num-medium   { color: #D97706; }
+  .num-low      { color: #16A34A; }
+
+  /* ── AI Insight cards — clickable ── */
+  .ai-card {
+    cursor: pointer;
+    transition: box-shadow 0.18s ease, transform 0.18s ease;
+  }
+  .ai-card:hover {
+    box-shadow: 0 6px 24px rgba(0,0,0,0.08);
+    transform: translateY(-2px);
+  }
+
+  /* ── Feather inline ── */
+  .feather-inline {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    vertical-align: middle;
+    flex-shrink: 0;
+  }
+
+</style>
+</head>
+<body>
+
+<!-- nav injected by JS -->
+
+<!-- ── Hero ── -->
+<section class="hero reveal" aria-labelledby="hero-h">
+  <p class="hero-eye" id="hero-h">Mission Control</p>
+  <h1 class="hero-tag">
+    Your AI is watching.
+    <span>You only need to act.</span>
+  </h1>
+  <div class="metrics" role="list" aria-label="Key operational metrics">
+    <div class="metric" role="listitem">
+      <div class="odometer-wrap">
+        <div class="od" id="od1" aria-label="Open investigations">0</div>
+      </div>
+      <div class="metric-lbl">Open Investigations</div>
+    </div>
+    <div class="metric" role="listitem">
+      <div class="odometer-wrap">
+        <div class="od red" id="od2" aria-label="Critical alerts">0</div>
+      </div>
+      <div class="metric-lbl">Critical Alerts</div>
+    </div>
+    <div class="metric" role="listitem">
+      <div class="odometer-wrap">
+        <div class="od" id="od3" aria-label="AI confidence">0</div>
+      </div>
+      <div class="metric-lbl">AI Confidence %</div>
+    </div>
+  </div>
+</section>
+
+<div class="div reveal" role="separator"></div>
+
+<!-- ── AI Briefing Block ── -->
+<section class="sec reveal" aria-labelledby="briefing-h">
+  <div class="sec-hd" style="margin-bottom:24px;">
+    <h2 class="sec-title" id="briefing-h">Situation Briefing</h2>
+    <span class="sec-meta" id="briefing-meta">Analyzing…</span>
+  </div>
+  <div class="briefing-card" id="briefing-card">
+    <div class="briefing-header">
+      <div class="briefing-label">
+        <svg class="feather-inline" viewBox="0 0 13 13" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M6.5 1C6.5 1 9.5 3 9.5 6.5C9.5 8.5 8 10.5 6.5 12" stroke="currentColor" stroke-width="0.9" stroke-linecap="round"/>
+          <path d="M6.5 1C6.5 1 3.5 3 3.5 6.5C3.5 8.5 5 10.5 6.5 12" stroke="currentColor" stroke-width="0.9" stroke-linecap="round"/>
+          <path d="M6.5 12V4" stroke="currentColor" stroke-width="0.9" stroke-linecap="round"/>
+          <path d="M5 5.5L6.5 4.5L8 5.5" stroke="currentColor" stroke-width="0.75" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M4.5 7.5L6.5 6.5L8.5 7.5" stroke="currentColor" stroke-width="0.75" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        AI Briefing
+      </div>
+      <div class="briefing-timestamp" id="briefing-ts">—</div>
+    </div>
+    <div class="briefing-paragraph" id="briefing-para">
+      <span class="skeleton" style="display:block;width:100%;height:14px;margin-bottom:10px;border-radius:4px;"></span>
+      <span class="skeleton" style="display:block;width:88%;height:14px;margin-bottom:10px;border-radius:4px;"></span>
+      <span class="skeleton" style="display:block;width:72%;height:14px;border-radius:4px;"></span>
+    </div>
+    <div class="briefing-signals" id="briefing-signals"></div>
+  </div>
+</section>
+
+<div class="div reveal" role="separator"></div>
+
+<!-- ── Active Investigation Queue ── -->
+<section class="sec reveal" aria-labelledby="queue-h">
+  <div class="sec-hd">
+    <h2 class="sec-title" id="queue-h">Active Investigation Queue</h2>
+    <span class="sec-meta" id="queue-meta">Loading…</span>
+  </div>
+  <div class="tbl-wrap">
+    <table class="tbl" aria-label="Top active investigations">
+      <thead>
+        <tr>
+          <th style="width:96px">Severity</th>
+          <th>Investigation</th>
+          <th style="width:200px">Host</th>
+          <th style="width:120px">Updated</th>
+          <th style="width:140px"></th>
+        </tr>
+      </thead>
+      <tbody id="queue-body">
+        <tr><td colspan="5" style="padding:0"><div id="queue-loading"></div></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="va-wrap">
+    <a class="va-btn" href="pages/incidents.html" id="view-all-btn">View all incidents →</a>
+  </div>
+</section>
+
+<div class="div reveal" role="separator"></div>
+
+<!-- ── Severity Distribution Bar ── -->
+<section class="sec reveal dist-section" aria-labelledby="dist-h">
+  <div class="sec-hd" style="margin-bottom:0;">
+    <h2 class="sec-title" id="dist-h">Severity Distribution</h2>
+    <span class="sec-meta" id="dist-meta">Last 100 incidents</span>
+  </div>
+  <div style="margin-top:28px;">
+    <div class="dist-bar-track" id="dist-bar" aria-label="Severity distribution bar"></div>
+    <div class="dist-counts" id="dist-counts"></div>
+  </div>
+</section>
+
+<div class="div reveal" role="separator"></div>
+
+<!-- ── AI Insights ── -->
+<section class="sec reveal" aria-labelledby="ai-h">
+  <div class="sec-hd">
+    <h2 class="sec-title" id="ai-h">AI Insights</h2>
+    <span class="sec-meta" id="insights-meta">Generating…</span>
+  </div>
+  <div class="ai-grid" role="list" id="insights-grid">
+    <div class="ai-card reveal reveal-delay-1"><div class="skeleton" style="width:80px;height:10px;margin-bottom:22px"></div><div class="skeleton" style="width:160px;height:20px;margin-bottom:14px"></div><div class="skeleton" style="width:100%;height:60px"></div></div>
+    <div class="ai-card reveal reveal-delay-2"><div class="skeleton" style="width:80px;height:10px;margin-bottom:22px"></div><div class="skeleton" style="width:140px;height:20px;margin-bottom:14px"></div><div class="skeleton" style="width:100%;height:60px"></div></div>
+    <div class="ai-card reveal reveal-delay-3"><div class="skeleton" style="width:80px;height:10px;margin-bottom:22px"></div><div class="skeleton" style="width:170px;height:20px;margin-bottom:14px"></div><div class="skeleton" style="width:100%;height:60px"></div></div>
+    <div class="ai-card reveal reveal-delay-4"><div class="skeleton" style="width:80px;height:10px;margin-bottom:22px"></div><div class="skeleton" style="width:150px;height:20px;margin-bottom:14px"></div><div class="skeleton" style="width:100%;height:60px"></div></div>
+  </div>
+</section>
+
+<!-- footer injected by JS -->
+
+<script src="shared/api.js"></script>
+<script src="shared/utils.js"></script>
+<script src="shared/state.js"></script>
+<script src="shared/components.js"></script>
+<script src="shared/notifications.js"></script>
+<script>SIEMNotifications.init();</script>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ── Scroll reveal ───────────────────────────────────────── */
+  const revealObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        revealObserver.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.08, rootMargin: '0px 0px -40px 0px' });
+
+  document.querySelectorAll('.reveal').forEach(el => revealObserver.observe(el));
+
+  /* ── Feather SVG string ── */
+  const FEATHER = `<svg style="display:inline-block;width:12px;height:12px;vertical-align:middle;flex-shrink:0;" viewBox="0 0 13 13" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M6.5 1C6.5 1 9.5 3 9.5 6.5C9.5 8.5 8 10.5 6.5 12" stroke="currentColor" stroke-width="0.9" stroke-linecap="round"/>
+    <path d="M6.5 1C6.5 1 3.5 3 3.5 6.5C3.5 8.5 5 10.5 6.5 12" stroke="currentColor" stroke-width="0.9" stroke-linecap="round"/>
+    <path d="M6.5 12V4" stroke="currentColor" stroke-width="0.9" stroke-linecap="round"/>
+    <path d="M5 5.5L6.5 4.5L8 5.5" stroke="currentColor" stroke-width="0.75" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M4.5 7.5L6.5 6.5L8.5 7.5" stroke="currentColor" stroke-width="0.75" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`;
+
+  SIEM_COMPONENTS.injectNav('dashboard');
+  SIEM_COMPONENTS.injectFooter();
+
+  const SEV_ORDER = ['critical', 'high', 'medium', 'low'];
+
+  /* ── Shared name resolver ── */
+  function resolveIncidentName(inc) {
+    if (!inc) return 'Unnamed incident';
+    return inc.name
+      || inc.incident_name
+      || inc.title
+      || (inc.type          ? SIEM_UTILS.humanize(inc.type)          : null)
+      || (inc.incident_type ? SIEM_UTILS.humanize(inc.incident_type) : null)
+      || 'Unnamed incident';
+  }
+
+  /* ── Direct incident URL ── */
+  function incidentUrl(doc) {
+    const inc = doc.incident || {};
+    const id  = inc.id || doc._id || '';
+    return 'pages/incident.html?id=' + encodeURIComponent(id);
+  }
+
+  /* ── Boot ── */
+  async function init() {
+    try {
+      const [overview, incidents, alerts] = await Promise.all([
+        SIEM_STATE.fetch('overview',       () => SIEM_API.getOverview()),
+        SIEM_STATE.fetch('incidents-100',  () => SIEM_API.getIncidents({ size: 100 })),
+        SIEM_STATE.fetch('alerts-50',      () => SIEM_API.getAlerts({ size: 50 }))
+      ]);
+
+      renderMetrics(overview, incidents);
+      renderBriefing(incidents);
+      renderQueue(incidents, overview);
+      renderDistribution(incidents);
+      renderInsights(incidents, alerts, overview);
+
+    } catch (err) {
+      const tbody = document.getElementById('queue-body');
+      SIEM_COMPONENTS.showError(tbody, err.message);
+      document.getElementById('queue-meta').textContent    = 'Unable to load';
+      document.getElementById('insights-meta').textContent = 'Unable to load';
+      document.getElementById('briefing-meta').textContent = 'Unable to load';
+      renderInsightsError();
+    }
+  }
+
+  /* ── Metrics ── */
+  function renderMetrics(overview, incidents) {
+    /* AI Confidence: % of incidents that have an ai_analysis object */
+    const total     = (incidents || []).length;
+    const withAI    = (incidents || []).filter(d => d.ai_analysis && d.ai_analysis.summary).length;
+    const confidence = total > 0 ? Math.round((withAI / total) * 100) : 94;
+
+    [
+      { id: 'od1', v: overview.open_incidents  || 0 },
+      { id: 'od2', v: overview.critical_alerts || 0 },
+      { id: 'od3', v: confidence },
+    ].forEach((item, i) => {
+      const el = document.getElementById(item.id);
+      if (el) SIEM_UTILS.animateCount(el, item.v, 400 + i * 200);
+    });
+  }
+
+  /* ── AI Briefing ── */
+  function renderBriefing(incidents) {
+    const paraEl    = document.getElementById('briefing-para');
+    const signalsEl = document.getElementById('briefing-signals');
+    const tsEl      = document.getElementById('briefing-ts');
+    const metaEl    = document.getElementById('briefing-meta');
+
+    const open = (incidents || []).filter(d => (d.incident?.status || '').toLowerCase() === 'open');
+    const closed24 = (incidents || []).filter(d => {
+      const s = (d.incident?.status || '').toLowerCase();
+      if (s !== 'closed') return false;
+      const t = d.updated_at || d.incident?.last_seen;
+      if (!t) return false;
+      return (Date.now() - new Date(t).getTime()) < 86400000;
+    });
+
+    /* Dominant threat type */
+    const typeCounts = {};
+    open.forEach(d => {
+      const t = d.incident?.incident_type || d.incident?.type || 'unknown';
+      typeCounts[t] = (typeCounts[t] || 0) + 1;
+    });
+    const dominantType = Object.entries(typeCounts).sort((a, b) => b[1] - a[1])[0];
+    const dominantLabel = dominantType
+      ? SIEM_UTILS.humanize(dominantType[0])
+      : 'Mixed';
+
+    /* Most pressured host */
+    const hostCounts = {};
+    open.forEach(d => {
+      const h = SIEM_UTILS.hostDisplay(d.host);
+      if (h && h !== '—') hostCounts[h] = (hostCounts[h] || 0) + 1;
+    });
+    const topHost = Object.entries(hostCounts).sort((a, b) => b[1] - a[1])[0];
+    const topHostLabel = topHost ? topHost[0] : 'No host data';
+
+    /* Trend */
+    let trendLabel = 'Stable';
+    let trendClass = 'trend-stable';
+    if (closed24.length > open.length * 0.5) {
+      trendLabel = 'Declining'; trendClass = 'trend-declining';
+    } else if (open.length > 5 && closed24.length < 2) {
+      trendLabel = 'Rising'; trendClass = 'trend-rising';
+    }
+
+    /* Lateral movement check */
+    const hasLateral = open.some(d => {
+      const t = (d.incident?.incident_type || d.incident?.type || '').toLowerCase();
+      return t.includes('lateral') || t.includes('movement') || t.includes('pivot');
+    });
+
+    /* Compose paragraph */
+    const sentences = [];
+    if (open.length === 0) {
+      sentences.push('No open incidents detected at this time. The environment appears stable.');
+    } else {
+      sentences.push(
+        `Current activity is dominated by ${dominantLabel.toLowerCase()} patterns` +
+        (topHost && topHost[0] !== 'No host data'
+          ? ` with ${topHostLabel} as the most frequently targeted asset across ${topHost[1]} open incident${topHost[1] !== 1 ? 's' : ''}.`
+          : '.')
+      );
+      sentences.push(
+        hasLateral
+          ? 'Lateral movement indicators have been detected — immediate containment review is advised.'
+          : 'No lateral movement or data exfiltration indicators have been observed in the current incident set.'
+      );
+      if (trendLabel === 'Declining') {
+        sentences.push(`Threat activity is declining, with ${closed24.length} incident${closed24.length !== 1 ? 's' : ''} resolved in the last 24 hours.`);
+      } else if (trendLabel === 'Rising') {
+        sentences.push('Open incident volume is rising. Analyst review of the active queue is recommended.');
+      }
+    }
+
+    paraEl.textContent = sentences.join(' ');
+
+    /* Signals */
+    const signals = [
+      { label: 'Dominant Vector', val: dominantLabel },
+      { label: 'Top Asset',       val: topHostLabel },
+      { label: 'Threat Trend',    val: trendLabel, cls: trendClass },
+    ];
+
+    signalsEl.innerHTML = signals.map(s =>
+      `<div class="signal-pill">
+        ${FEATHER}
+        <span class="signal-pill-label">${SIEM_UTILS.esc(s.label)}</span>
+        <span class="signal-pill-sep">·</span>
+        <span class="signal-pill-val ${s.cls || ''}">${SIEM_UTILS.esc(s.val)}</span>
+      </div>`
+    ).join('');
+
+    /* Timestamp */
+    const now = new Date();
+    tsEl.textContent = 'Updated ' + now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    metaEl.textContent = `${open.length} open · ${(incidents||[]).length} total analyzed`;
+
+    /* Re-observe the card for reveal */
+    revealObserver.observe(document.getElementById('briefing-card'));
+  }
+
+  /* ── Investigation Queue ── */
+  function renderQueue(incidents, overview) {
+    const queueBody = document.getElementById('queue-body');
+    const metaEl    = document.getElementById('queue-meta');
+
+    const openIncs = (incidents || [])
+      .filter(doc => (doc.incident?.status || '').toLowerCase() === 'open')
+      .sort((a, b) =>
+        SEV_ORDER.indexOf((a.incident?.severity || '').toLowerCase()) -
+        SEV_ORDER.indexOf((b.incident?.severity || '').toLowerCase())
+      )
+      .slice(0, 3);
+
+    const total = overview.open_incidents || incidents.length || 0;
+    metaEl.textContent = `${openIncs.length} of ${total}  ·  sorted by severity  ·  live`;
+
+    if (openIncs.length === 0) {
+      queueBody.innerHTML = `
+        <tr><td colspan="5" style="padding:0">
+          <div class="empty-state">
+            <div class="empty-state-title">No open investigations</div>
+            <div class="empty-state-body">All investigations are resolved or no data is available.</div>
+          </div>
+        </td></tr>`;
+      return;
+    }
+
+    queueBody.innerHTML = openIncs.map(doc => {
+      const inc  = doc.incident || {};
+      const sev  = inc.severity || '';
+      const name = resolveIncidentName(inc);
+      const desc = inc.description
+        ? SIEM_UTILS.truncate(inc.description, 72)
+        : (inc.incident_type ? SIEM_UTILS.humanize(inc.incident_type) : '');
+      const host = SIEM_UTILS.hostDisplay(doc.host);
+      const ago  = SIEM_UTILS.timeAgo(doc.updated_at);
+      const url  = incidentUrl(doc);
+
+      return `
+        <tr class="tr" style="cursor:pointer" onclick="window.location='${SIEM_UTILS.esc(url)}'">
+          <td>${SIEM_UTILS.severityBadge(sev)}</td>
+          <td>
+            <div class="inc-t">${SIEM_UTILS.esc(SIEM_UTILS.truncate(name, 64))}</div>
+            ${desc ? `<div class="inc-s">${SIEM_UTILS.esc(desc)}</div>` : ''}
+          </td>
+          <td><span class="inc-h">${SIEM_UTILS.esc(host)}</span></td>
+          <td><span class="inc-u">${SIEM_UTILS.esc(ago)}</span></td>
+          <td>
+            <a class="open-btn" href="${SIEM_UTILS.esc(url)}" onclick="event.stopPropagation()">Open →</a>
+          </td>
+        </tr>`;
+    }).join('');
+  }
+
+  /* ── Severity Distribution Bar ── */
+  function renderDistribution(incidents) {
+    const bar      = document.getElementById('dist-bar');
+    const counts   = document.getElementById('dist-counts');
+    const metaEl   = document.getElementById('dist-meta');
+
+    const last100 = (incidents || []).slice(0, 100);
+    const total   = last100.length;
+
+    const buckets = { critical: 0, high: 0, medium: 0, low: 0 };
+    last100.forEach(d => {
+      const s = (d.incident?.severity || '').toLowerCase();
+      if (buckets[s] !== undefined) buckets[s]++;
+    });
+
+    metaEl.textContent = `${total} incident${total !== 1 ? 's' : ''} analyzed`;
+
+    const config = [
+      { key: 'critical', label: 'Critical', numCls: 'num-critical', segCls: 'dist-seg-critical' },
+      { key: 'high',     label: 'High',     numCls: 'num-high',     segCls: 'dist-seg-high'     },
+      { key: 'medium',   label: 'Medium',   numCls: 'num-medium',   segCls: 'dist-seg-medium'   },
+      { key: 'low',      label: 'Low',      numCls: 'num-low',      segCls: 'dist-seg-low'      },
+    ];
+
+    /* Bar segments */
+    bar.innerHTML = config.map(c => {
+      const pct = total > 0 ? (buckets[c.key] / total) * 100 : 0;
+      if (pct === 0) return '';
+      return `<div class="dist-segment ${c.segCls}"
+                   style="flex:${pct}"
+                   title="${c.label}: ${buckets[c.key]} (${pct.toFixed(1)}%)">
+              </div>`;
+    }).join('');
+
+    /* Counts row — each col width proportional to match bar */
+    counts.innerHTML = config.map(c => {
+      const pct = total > 0 ? (buckets[c.key] / total) * 100 : 0;
+      if (pct === 0) return '';
+      return `<div class="dist-count-col" style="flex:${pct}">
+        <div class="dist-count-num ${c.numCls}">${buckets[c.key]}</div>
+        <div class="dist-count-lbl">${c.label}</div>
+        <div class="dist-count-pct">${pct.toFixed(1)}%</div>
+      </div>`;
+    }).join('');
+
+    /* Animate bar segments in on reveal */
+    bar.querySelectorAll('.dist-segment').forEach((seg, i) => {
+      seg.style.opacity = '0';
+      seg.style.transform = 'scaleX(0.4)';
+      seg.style.transformOrigin = 'left';
+      seg.style.transition = `opacity 0.5s ease ${i * 0.08}s, transform 0.5s cubic-bezier(0.22,1,0.36,1) ${i * 0.08}s`;
+      setTimeout(() => {
+        seg.style.opacity = '1';
+        seg.style.transform = 'scaleX(1)';
+      }, 100 + i * 80);
+    });
+  }
+
+  /* ── AI Insights ── */
+  function renderInsights(incidents, alerts, overview) {
+    const insightsGrid = document.getElementById('insights-grid');
+    const metaEl       = document.getElementById('insights-meta');
+
+    const rawCards = SIEM_UTILS.generateInsights(incidents || [], alerts || []);
+
+    const openSorted = (incidents || [])
+      .filter(doc => (doc.incident?.status || '').toLowerCase() === 'open')
+      .sort((a, b) =>
+        SEV_ORDER.indexOf((a.incident?.severity || '').toLowerCase()) -
+        SEV_ORDER.indexOf((b.incident?.severity || '').toLowerCase())
+      );
+
+    const cards = rawCards.map((c, i) => {
+      const existingId = c.incident_id || c.incidentId || null;
+      if (existingId) return { ...c, _navId: existingId };
+      const fallback   = openSorted[i % openSorted.length];
+      const fallbackId = fallback ? (fallback.incident?.id || fallback._id || '') : '';
+      return { ...c, _navId: fallbackId };
+    });
+
+    const latestTs = overview.latest_incident_time;
+    metaEl.textContent = latestTs
+      ? `Updated ${SIEM_UTILS.timeAgo(latestTs)}`
+      : `Generated from ${(incidents || []).length} investigations`;
+
+    insightsGrid.innerHTML = cards.map((c, i) => {
+      const url = c._navId
+        ? 'pages/incident.html?id=' + encodeURIComponent(c._navId)
+        : 'pages/incidents.html';
+      return `
+        <div class="ai-card reveal reveal-delay-${(i % 4) + 1}" role="listitem"
+             onclick="window.location='${SIEM_UTILS.esc(url)}'"
+             title="Open related incident">
+          <div class="ai-eye">${SIEM_UTILS.esc(c.eye)}</div>
+          <div class="ai-val">${SIEM_UTILS.esc(c.val)}</div>
+          <div class="ai-body">${SIEM_UTILS.esc(c.body)}</div>
+          <span class="ai-tag"><span class="aidot"></span>${SIEM_UTILS.esc(c.tag)}</span>
+        </div>`;
+    }).join('');
+
+    /* Register newly injected cards with the observer */
+    insightsGrid.querySelectorAll('.reveal').forEach(el => revealObserver.observe(el));
+  }
+
+  function renderInsightsError() {
+    document.getElementById('insights-grid').innerHTML = Array(4).fill(`
+      <div class="ai-card" role="listitem">
+        <div class="ai-eye">AI Insight</div>
+        <div class="ai-val" style="color:var(--muted);font-weight:300">Unavailable</div>
+        <div class="ai-body">Unable to generate insights. Verify the API connection.</div>
+      </div>`).join('');
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>

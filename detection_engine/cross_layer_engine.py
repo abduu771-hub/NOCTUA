@@ -56,6 +56,11 @@ try:
 except ImportError:
     AIIncidentAnalyzer = None
 
+try:
+    from detection_engine.automation_notifier import AutomationNotifier
+except ImportError:
+    AutomationNotifier = None
+
 log = logging.getLogger("detection_engine.cross_layer_engine")
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -658,30 +663,64 @@ class CrossLayerEngine:
     def __init__(self, es_client: Elasticsearch):
         self.es = es_client
         self.ai_analyzer = AIIncidentAnalyzer(es_client) if AIIncidentAnalyzer else None
+        self.notifier = AutomationNotifier() if AutomationNotifier else None
 
-    def _run_ai_analysis(self, index: str, doc_id: str, incident_doc: dict) -> None:
+    def _run_ai_analysis(self, index: str, doc_id: str, incident_doc: dict) -> bool:
         """
         Safely enrich a cross-layer incident with AI analysis.
 
+        Returns True when AI analysis was written.
         This must never break cross-layer incident creation/update.
         """
         log.info("🤖 CROSS AI HOOK CALLED index=%s doc_id=%s", index, doc_id)
 
         if not self.ai_analyzer:
-            return
+            return False
 
         try:
-            self.ai_analyzer.analyze_and_update(
+            written = self.ai_analyzer.analyze_and_update(
                 index=index,
                 doc_id=doc_id,
                 incident_doc=incident_doc,
                 force=False,
             )
-            log.info("🤖 CROSS AI HOOK CALLED index=%s doc_id=%s", index, doc_id)
-            
+
+            if written:
+                log.info("🤖 CROSS AI ANALYSIS WRITTEN index=%s doc_id=%s", index, doc_id)
+
+            return bool(written)
 
         except Exception as exc:
             log.warning("AI cross-layer incident analysis failed safely: %s", exc)
+            return False
+
+    def _run_n8n_notification(
+        self,
+        index: str,
+        doc_id: str,
+        incident_doc: dict,
+        ai_analysis: Optional[dict] = None,
+    ) -> None:
+        """
+        Direct n8n fallback notification for cross-layer incidents.
+
+        This is used when AI analysis does not run or does not write.
+        It must never break cross-layer incident creation/update.
+        """
+        if not self.notifier:
+            return
+
+        try:
+            self.notifier.notify(
+                index,
+                doc_id,
+                incident_doc,
+                ai_analysis or {},
+            )
+            log.info("📨 CROSS-LAYER n8n notification sent doc_id=%s", doc_id)
+
+        except Exception as exc:
+            log.warning("Cross-layer n8n notification failed safely: %s", exc)
 
     # ═══════════════════════════════════════════════════════════════════════
     # PUBLIC ENTRY POINT
@@ -1518,9 +1557,11 @@ class CrossLayerEngine:
         if primary_user:
             doc["user"] = {"name": primary_user}
 
+        index_name = self._index_name(now)
+
         try:
             self.es.index(
-                index=self._index_name(now),
+                index=index_name,
                 id=incident_id,
                 body=doc,
                 refresh="wait_for",
@@ -1541,7 +1582,15 @@ class CrossLayerEngine:
             grouping_key,
             evidence.get("related_incident_ids", []),
         )
-        self._run_ai_analysis(self._index_name(now), incident_id, doc)
+        ai_written = self._run_ai_analysis(index_name, incident_id, doc)
+
+        if not ai_written:
+            self._run_n8n_notification(
+                index=index_name,
+                doc_id=incident_id,
+                incident_doc=doc,
+                ai_analysis={},
+            )
 
     # ═══════════════════════════════════════════════════════════════════════
     # UPDATE EXISTING CROSS-LAYER INCIDENT
@@ -1699,7 +1748,15 @@ class CrossLayerEngine:
             incident.get("grouping_key"),
             related.get("incident_ids", []),
         )
-        self._run_ai_analysis(hit["_index"], hit["_id"], src)
+        ai_written = self._run_ai_analysis(hit["_index"], hit["_id"], src)
+
+        if not ai_written:
+            self._run_n8n_notification(
+                index=hit["_index"],
+                doc_id=hit["_id"],
+                incident_doc=src,
+                ai_analysis=src.get("ai_analysis") or {},
+            )
 
     # ═══════════════════════════════════════════════════════════════════════
     # ES QUERY HELPERS

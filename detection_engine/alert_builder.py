@@ -32,7 +32,7 @@ from typing import Any, List, Optional
 
 from .models import Event
 from .rules import RuleDefinition
-
+from .lifecycle_contract import ALERT_STATUS_OPEN, DEFAULT_CORRELATION_WINDOW_SECONDS
 log = logging.getLogger("detection_engine.alert_builder")
 
 ENGINE_NAME = "siem-ai-detection-engine"
@@ -625,7 +625,7 @@ def build_alert(
         dict safe for Elasticsearch indexing.
     """
     now = datetime.now(timezone.utc)
-    now_iso = now.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    now_iso = now.isoformat().replace("+00:00", "Z")
 
     # ── Extract evidence from fired slot ──────────────────────────────────
     matched_event_ids: List[str] = []
@@ -722,9 +722,17 @@ def build_alert(
     # ── Build alert document ──────────────────────────────────────────────
     alert: dict = {
         "@timestamp": now_iso,
+        "status": ALERT_STATUS_OPEN,
+        "opened_at": now_iso,
+        "closed_at": None,
+        "reopened_at": None,
+        "closed_by": None,
+        "reopened_by": None,
+        "last_status_change": now_iso,
         "alert": {
             "id": alert_id,
         },
+        
         "rule": {
             "id": rule.rule_id,
             "name": rule.rule_id,
@@ -741,10 +749,14 @@ def build_alert(
             "name": ENGINE_NAME,
             "version": ENGINE_VERSION,
         },
+        "ai_analysis": None,
         "evidence": {
             "raw_events": raw_events,
             "group_key": fired_slot.group_key,
             "window_seconds": rule.timeframe_seconds,
+        },
+        "correlation": {
+            "window_seconds": DEFAULT_CORRELATION_WINDOW_SECONDS,
         },
         "mitre": {
             "id": rule.mitre_id,
@@ -759,7 +771,7 @@ def build_alert(
 
     user_name = _normalize_user_name(triggering_event.user)
     if user_name:
-        alert["user.name"] = user_name
+        alert.setdefault("user", {})["name"] = user_name
 
     if triggering_event.host:
         alert["host"] = {"name": triggering_event.host}
@@ -895,6 +907,19 @@ def build_alert(
         if failed_count is not None:
             alert["correlation"]["brute_force_attempt_count"] = failed_count
 
+    
+    if alert.get("status") is None:
+        raise ValueError("Missing status")
+
+    if not alert.get("alert", {}).get("id"):
+        raise ValueError("Missing alert.id")
+
+    if not alert.get("rule", {}).get("id"):
+        raise ValueError("Missing rule.id")
+
+    if not alert.get("@timestamp"):
+        raise ValueError("Missing @timestamp")
+    
     log.info("Alert built: [%s] %s", rule.severity, rule.rule_id)
     return alert
 

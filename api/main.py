@@ -7,6 +7,10 @@ from api.routes.events import router as events_router
 from api.routes.alerts import router as alerts_router
 from api.routes.incidents import router as incidents_router
 from api.routes.sources import router as sources_router
+from api.routes import notifications as notifications_router
+from api import auth as auth_router
+from api import setup as setup_router
+
 
 app = FastAPI(title="SIEM-AI API", description="Read-only backend for SIEM-AI UI")
 
@@ -32,3 +36,11 @@ app.include_router(events_router, prefix="/api")
 app.include_router(alerts_router, prefix="/api")
 app.include_router(incidents_router, prefix="/api")
 app.include_router(sources_router, prefix="/api")
+app.include_router(overview_router, prefix="/api")
+app.include_router(events_router, prefix="/api")
+app.include_router(alerts_router, prefix="/api")
+app.include_router(incidents_router, prefix="/api")
+app.include_router(sources_router, prefix="/api")
+app.include_router(notifications_router.router, prefix="/api")
+app.include_router(auth_router.router, prefix="/api")
+app.include_router(setup_router.router, prefix="/api")

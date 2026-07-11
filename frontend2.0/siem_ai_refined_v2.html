@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIEM-AI — Mission Control</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100;0,9..40,200;0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;0,9..40,900&display=swap" rel="stylesheet">
+<style>
+@import url('https://fonts.cdnfonts.com/css/hoover');
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --ff:"DM Sans",system-ui,sans-serif;
+  --ff-num:"Hoover",var(--ff);
+  --bg:#F2F2EF;
+  --white:#FFFFFF;
+  --border:#E8E8E5;
+  --text:#0E0E0D;
+  --muted:#787870;
+  --divider:#DEDED9;
+  --card-shadow:0 1px 3px rgba(0,0,0,0.05),0 0 0 0.5px rgba(0,0,0,0.07);
+}
+body{
+  font-family:var(--ff);
+  background:var(--bg);color:var(--text);
+  -webkit-font-smoothing:antialiased;
+  font-size:14px;line-height:1.6;min-height:100vh;
+}
+
+.nav{
+  position:sticky;top:0;z-index:100;
+  background:rgba(242,242,239,0.97);
+  backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
+  border-bottom:0.5px solid var(--border);
+  height:64px;padding:0 64px;
+  display:flex;align-items:center;justify-content:space-between;
+}
+.nav-left{display:flex;align-items:center;gap:32px}
+.logo-mark{
+  width:38px;height:38px;border-radius:8px;
+  border:0.5px solid var(--border);
+  background:var(--white);
+  flex-shrink:0;
+}
+.nav-links{display:flex;gap:2px;position:absolute;left:50%;transform:translateX(-50%)}
+.nav-a{
+  font-size:13.5px;font-weight:400;color:var(--muted);
+  padding:7px 15px;border-radius:7px;cursor:pointer;
+  transition:opacity 180ms ease;text-decoration:none;letter-spacing:0.01em;
+}
+.nav-a:hover{opacity:0.6}
+.nav-a.on{color:var(--text);font-weight:500}
+.avatar{
+  width:32px;height:32px;border-radius:50%;
+  background:var(--text);color:var(--bg);
+  font-size:10px;font-weight:600;
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;letter-spacing:0.04em;
+}
+
+.hero{padding:120px 64px 104px;text-align:center;max-width:1280px;margin:0 auto}
+.hero-eye{
+  font-size:10px;font-weight:500;letter-spacing:0.18em;
+  text-transform:uppercase;color:var(--muted);margin-bottom:36px;
+}
+.hero-tag{
+  font-size:34px;font-weight:800;color:var(--text);
+  letter-spacing:-0.045em;line-height:1.12;margin-bottom:108px;
+}
+.hero-tag span{
+  display:block;font-weight:300;font-size:31px;
+  letter-spacing:-0.03em;color:var(--muted);margin-top:4px;
+}
+
+.metrics{display:flex;justify-content:center;max-width:680px;margin:0 auto}
+.metric{flex:1;padding:0 52px;position:relative}
+.metric+.metric::before{
+  content:'';position:absolute;left:0;top:12%;bottom:12%;
+  width:0.5px;background:var(--divider);
+}
+.odometer-wrap{height:96px;overflow:hidden;margin-bottom:14px}
+.od{
+  display:inline-block;
+  font-family:"Hoover",var(--ff);
+  font-size:86px;font-weight:700;
+  letter-spacing:-0.02em;
+  line-height:96px;
+  color:var(--text);
+  font-variant-numeric:tabular-nums;
+  font-feature-settings:"kern" 1,"liga" 1;
+}
+.od.red{color:#B91C1C}
+.od .pct{
+  font-family:"Hoover",var(--ff);
+  font-size:42px;font-weight:700;
+  letter-spacing:-0.01em;
+}
+.metric-lbl{
+  font-size:10px;font-weight:500;color:var(--muted);
+  letter-spacing:0.1em;text-transform:uppercase;
+}
+
+.div{height:0.5px;background:var(--divider);max-width:calc(1280px - 128px);margin:0 auto 96px}
+
+.sec{max-width:1280px;margin:0 auto;padding:0 64px 96px}
+.sec-hd{
+  display:flex;align-items:baseline;justify-content:space-between;
+  margin-bottom:36px;padding-bottom:20px;
+  border-bottom:0.5px solid var(--border);
+}
+.sec-title{font-size:18px;font-weight:700;color:var(--text);letter-spacing:-0.03em}
+.sec-meta{font-size:12px;font-weight:300;color:var(--muted);letter-spacing:0.01em}
+
+.tbl-wrap{padding:0 8px}
+.tbl{width:100%;border-collapse:collapse}
+.tbl thead th{
+  font-size:10px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;
+  color:var(--muted);text-align:left;padding:0 0 18px;
+}
+.tbl thead th:last-child{text-align:right}
+.tr{border-bottom:0.5px solid var(--border);cursor:pointer;transition:background 120ms ease}
+.tr:hover{background:rgba(0,0,0,0.02)}
+.tr td{padding:28px 0;vertical-align:middle}
+.tr td+td{padding-left:36px}
+.tr td:last-child{text-align:right}
+
+.badge{
+  display:inline-flex;align-items:center;padding:4px 11px;
+  border-radius:5px;font-size:10.5px;font-weight:600;
+  letter-spacing:0.04em;border:0.5px solid transparent;white-space:nowrap;
+}
+.bc{background:#FEF2F2;color:#991B1B;border-color:#FECACA}
+.bh{background:#FFF7ED;color:#C2410C;border-color:#FED7AA}
+.bm{background:#FFFBEB;color:#B45309}
+.bl{background:#F0FDF4;color:#15803D}
+
+.inc-t{font-size:14.5px;font-weight:600;color:var(--text);margin-bottom:5px;letter-spacing:-0.015em}
+.inc-s{font-size:12.5px;font-weight:300;color:var(--muted);line-height:1.5}
+.inc-h{font-size:12px;color:var(--muted);font-family:'SF Mono','Fira Code','Courier New',monospace;letter-spacing:0.01em}
+.inc-u{font-size:12.5px;font-weight:300;color:var(--muted);font-variant-numeric:tabular-nums}
+
+.open-btn{
+  display:inline-flex;align-items:center;gap:7px;
+  font-size:12.5px;font-weight:500;
+  color:#fff;
+  background:var(--text);
+  border:1px solid var(--text);
+  padding:9px 18px;border-radius:8px;
+  cursor:pointer;
+  transition:background 200ms ease,color 200ms ease;
+  font-family:var(--ff);white-space:nowrap;
+}
+.open-btn:hover{background:#fff;color:var(--text)}
+
+.va-wrap{text-align:center;margin-top:48px}
+.va-btn{
+  display:inline-flex;align-items:center;gap:10px;
+  font-size:13.5px;font-weight:500;color:#fff;
+  background:var(--text);border:1px solid var(--text);
+  padding:13px 36px;border-radius:9px;letter-spacing:0.01em;
+  cursor:pointer;transition:background 200ms ease,color 200ms ease;
+  font-family:var(--ff);
+}
+.va-btn:hover{background:#fff;color:var(--text)}
+
+.ai-grid{
+  display:grid;grid-template-columns:repeat(2,1fr);
+  gap:0;background:var(--border);
+  border:0.5px solid var(--border);border-radius:18px;
+  overflow:hidden;box-shadow:var(--card-shadow);
+}
+.ai-card{
+  background:var(--white);padding:40px 40px 36px;
+  transition:background 150ms ease;position:relative;
+}
+.ai-card:hover{background:#FAFAF8}
+.ai-card::after{
+  content:'';position:absolute;
+  right:0;top:32px;bottom:32px;
+  width:0.5px;background:var(--border);
+}
+.ai-card:nth-child(2)::after,.ai-card:nth-child(4)::after{display:none}
+.ai-card:nth-child(1),.ai-card:nth-child(2){border-bottom:0.5px solid var(--border)}
+.ai-eye{
+  font-size:10px;font-weight:500;letter-spacing:0.12em;
+  text-transform:uppercase;color:var(--muted);margin-bottom:22px;
+}
+.ai-val{
+  font-size:22px;font-weight:700;color:var(--text);
+  letter-spacing:-0.03em;line-height:1.25;margin-bottom:14px;
+}
+.ai-body{font-size:13px;font-weight:300;color:var(--muted);line-height:1.75}
+.ai-tag{
+  display:inline-flex;align-items:center;gap:6px;
+  font-size:10.5px;font-weight:600;color:#4338CA;
+  background:#EEEEFF;padding:5px 11px;border-radius:5px;margin-top:18px;
+  letter-spacing:0.02em;
+}
+.aidot{width:5px;height:5px;border-radius:50%;background:#4338CA;flex-shrink:0}
+
+footer{border-top:0.5px solid var(--border)}
+.ft{max-width:1280px;margin:0 auto;padding:28px 64px;display:flex;align-items:center;justify-content:space-between}
+.ft-brand{
+  width:28px;height:28px;border-radius:6px;
+  border:0.5px solid var(--border);background:var(--white);
+}
+.ft-status{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:300;color:var(--muted)}
+.dot{width:5px;height:5px;border-radius:50%;background:#15803D;animation:pu 2.8s ease-in-out infinite}
+@keyframes pu{0%,100%{opacity:1}50%{opacity:.25}}
+
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+@media(max-width:1024px){
+  .nav-links{display:none}
+  .hero{padding:80px 32px 72px}
+  .sec,.ft{padding-left:32px;padding-right:32px}
+  .div{margin-left:32px;margin-right:32px}
+  .ai-grid{grid-template-columns:1fr}
+}
+@media(max-width:640px){
+  .metrics{flex-direction:column;gap:52px}
+  .metric+.metric::before{display:none}
+  .metric{padding:0}
+}
+</style>
+</head>
+<body>
+
+<nav class="nav" role="navigation" aria-label="Main navigation">
+  <div class="nav-left">
+    <div class="logo-mark" role="img" aria-label="SIEM-AI logo placeholder"></div>
+  </div>
+  <div class="nav-links" role="list">
+    <a class="nav-a on" tabindex="0">Mission Control</a>
+    <a class="nav-a" tabindex="0">Investigations</a>
+    <a class="nav-a" tabindex="0">Alerts</a>
+    <a class="nav-a" tabindex="0">Analytics</a>
+    <a class="nav-a" tabindex="0">Settings</a>
+  </div>
+  <div style="display:flex;align-items:center;gap:16px">
+    <div class="avatar" role="button" aria-label="User menu" tabindex="0">SA</div>
+  </div>
+</nav>
+
+<section class="hero" aria-labelledby="hero-h">
+  <p class="hero-eye" id="hero-h">Mission Control</p>
+  <h1 class="hero-tag">
+    Your AI is watching.
+    <span>You only need to act.</span>
+  </h1>
+  <div class="metrics" role="list" aria-label="Key operational metrics">
+    <div class="metric" role="listitem">
+      <div class="odometer-wrap" aria-label="248 open investigations">
+        <div class="od" id="od1">0</div>
+      </div>
+      <div class="metric-lbl">Open Investigations</div>
+    </div>
+    <div class="metric" role="listitem">
+      <div class="odometer-wrap" aria-label="12 critical cases">
+        <div class="od red" id="od2">0</div>
+      </div>
+      <div class="metric-lbl">Critical Cases</div>
+    </div>
+    <div class="metric" role="listitem">
+      <div class="odometer-wrap" aria-label="94 percent AI confidence">
+        <div class="od" id="od3">0<span class="pct">%</span></div>
+      </div>
+      <div class="metric-lbl">AI Confidence</div>
+    </div>
+  </div>
+</section>
+
+<div class="div" role="separator"></div>
+
+<section class="sec" aria-labelledby="q-h">
+  <div class="sec-hd">
+    <h2 class="sec-title" id="q-h">Active Investigation Queue</h2>
+    <span class="sec-meta">3 of 248 &nbsp;·&nbsp; sorted by severity &nbsp;·&nbsp; live</span>
+  </div>
+  <div class="tbl-wrap">
+  <table class="tbl" aria-label="Top 3 active investigations">
+    <thead>
+      <tr>
+        <th style="width:96px">Severity</th>
+        <th>Incident</th>
+        <th style="width:192px">Host</th>
+        <th style="width:128px">Updated</th>
+        <th style="width:148px"></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="tr">
+        <td><span class="badge bc">Critical</span></td>
+        <td>
+          <div class="inc-t">Lateral movement detected across AD forest</div>
+          <div class="inc-s">Pass-the-hash via compromised service account</div>
+        </td>
+        <td><span class="inc-h">dc01.corp.internal</span></td>
+        <td><span class="inc-u">2 min ago</span></td>
+        <td><button class="open-btn">Open &rarr;</button></td>
+      </tr>
+      <tr class="tr">
+        <td><span class="badge bc">Critical</span></td>
+        <td>
+          <div class="inc-t">Ransomware encryption process initiated</div>
+          <div class="inc-s">Unsigned binary executing from %TEMP% directory</div>
+        </td>
+        <td><span class="inc-h">wks-finance-07</span></td>
+        <td><span class="inc-u">11 min ago</span></td>
+        <td><button class="open-btn">Open &rarr;</button></td>
+      </tr>
+      <tr class="tr">
+        <td><span class="badge bh">High</span></td>
+        <td>
+          <div class="inc-t">Credential stuffing against SSO portal</div>
+          <div class="inc-s">14,000 failed auth attempts from 3 distinct ASNs</div>
+        </td>
+        <td><span class="inc-h">auth.sso.corp</span></td>
+        <td><span class="inc-u">34 min ago</span></td>
+        <td><button class="open-btn">Open &rarr;</button></td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="va-wrap">
+    <button class="va-btn">View all investigations &rarr;</button>
+  </div>
+</section>
+
+<div class="div" role="separator"></div>
+
+<section class="sec" aria-labelledby="ai-h">
+  <div class="sec-hd">
+    <h2 class="sec-title" id="ai-h">AI Insights</h2>
+    <span class="sec-meta">Generated 47 seconds ago</span>
+  </div>
+  <div class="ai-grid" role="list">
+    <div class="ai-card" role="listitem">
+      <div class="ai-eye">Latest AI Assessment</div>
+      <div class="ai-val">Probable account<br>compromise in progress</div>
+      <div class="ai-body">Pattern analysis across 31 correlated events indicates an active compromise of a privileged service account. The chain shows reconnaissance followed by systematic lateral movement through domain controllers.</div>
+      <span class="ai-tag"><span class="aidot"></span>High confidence · 97%</span>
+    </div>
+    <div class="ai-card" role="listitem">
+      <div class="ai-eye">Latest Attack Story</div>
+      <div class="ai-val">Multi-stage credential<br>harvesting campaign</div>
+      <div class="ai-body">Initial access via SSO stuffing, privilege escalation using pass-the-hash on a domain controller, now staging data access through financial systems. Three TTPs confirmed across four hosts.</div>
+      <span class="ai-tag"><span class="aidot"></span>3 TTPs identified</span>
+    </div>
+    <div class="ai-card" role="listitem">
+      <div class="ai-eye">Latest Recommendation</div>
+      <div class="ai-val">Isolate dc01.corp<br>immediately</div>
+      <div class="ai-body">Isolating dc01.corp.internal contains the lateral movement blast radius. Rotate service account credentials and enforce MFA on all privileged identities before restoring connectivity.</div>
+      <span class="ai-tag"><span class="aidot"></span>Urgent action required</span>
+    </div>
+    <div class="ai-card" role="listitem">
+      <div class="ai-eye">Latest Investigation Summary</div>
+      <div class="ai-val">Case INV-0412<br>escalated to Critical</div>
+      <div class="ai-body">Third-stage payload execution triggered automated escalation. The AI correlated 7 previously unrelated alerts into a single coherent attack chain spanning 4 hosts over 6 hours.</div>
+      <span class="ai-tag"><span class="aidot"></span>Auto-correlated</span>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="ft">
+    <div class="ft-brand" role="img" aria-label="SIEM-AI logo"></div>
+    <div class="ft-status">
+      <div class="dot"></div>
+      All systems operational
+    </div>
+  </div>
+</footer>
+
+<script>
+(function(){
+  function easeOut(t){return 1-Math.pow(1-t,4)}
+  function animate(el,endVal,hasPct,delay){
+    var startVal=Math.floor(endVal*0.55),duration=2000,start=null;
+    setTimeout(function(){
+      function step(ts){
+        if(!start)start=ts;
+        var p=Math.min((ts-start)/duration,1);
+        var cur=Math.round(startVal+(endVal-startVal)*easeOut(p));
+        if(hasPct){
+          el.innerHTML=cur+'<span class="pct">%</span>';
+        } else {
+          el.textContent=cur;
+        }
+        if(p<1)requestAnimationFrame(step);
+      }
+      requestAnimationFrame(step);
+    },delay);
+  }
+  var items=[{id:'od1',v:248,p:false},{id:'od2',v:12,p:false},{id:'od3',v:94,p:true}];
+  items.forEach(function(t,i){
+    var el=document.getElementById(t.id);
+    if(el)animate(el,t.v,t.p,400+i*200);
+  });
+})();
+</script>
+</body>
+</html>

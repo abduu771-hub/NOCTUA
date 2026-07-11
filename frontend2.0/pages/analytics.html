@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIEM-AI — Analytics</title>
+<link rel="stylesheet" href="../assets/css/design-system.css">
+<style>
+
+  /* ── Accordion shell ── */
+  .acc-section {
+    background: var(--white);
+    border: 0.5px solid var(--border);
+    border-radius: 14px;
+    box-shadow: var(--card-shadow);
+    margin-bottom: 16px;
+    overflow: hidden;
+  }
+  .acc-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 22px 28px;
+    cursor: pointer;
+    user-select: none;
+    transition: background 130ms ease;
+  }
+  .acc-head:hover { background: #FAFAF8; }
+  .acc-head-left { display: flex; align-items: center; gap: 14px; }
+  .acc-icon {
+    width: 30px; height: 30px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; flex-shrink: 0;
+    background: var(--bg);
+  }
+  .acc-title-wrap {}
+  .acc-title {
+    font-size: 14.5px; font-weight: 600; color: var(--text);
+    letter-spacing: -0.01em;
+  }
+  .acc-sub {
+    font-size: 11.5px; font-weight: 300; color: var(--muted);
+    margin-top: 2px;
+  }
+  .acc-head-right { display: flex; align-items: center; gap: 14px; }
+  .acc-badge {
+    font-size: 11px; font-weight: 600; color: var(--text);
+    font-family: var(--ff-mono); padding: 3px 10px;
+    background: var(--bg); border-radius: 20px;
+  }
+  .acc-chevron {
+    width: 9px; height: 9px;
+    border-right: 1.5px solid var(--muted);
+    border-bottom: 1.5px solid var(--muted);
+    transform: rotate(45deg);
+    transition: transform 220ms cubic-bezier(.4,0,.2,1);
+    flex-shrink: 0;
+  }
+  .acc-section.open .acc-chevron { transform: rotate(225deg); }
+
+  .acc-body-outer {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 320ms cubic-bezier(.4,0,.2,1);
+  }
+  .acc-section.open .acc-body-outer { max-height: 2400px; }
+  .acc-body {
+    padding: 4px 28px 28px;
+    border-top: 0.5px solid var(--border);
+  }
+
+  /* ── KPI strip inside accordion (always visible, summary row) ── */
+  .kpi-strip {
+    display: flex; gap: 0;
+    background: var(--border); border: 0.5px solid var(--border);
+    border-radius: 12px; overflow: hidden; margin-bottom: 4px;
+  }
+  .kpi-cell { flex: 1; background: var(--white); padding: 22px 24px; position: relative; }
+  .kpi-cell+.kpi-cell::before {
+    content: ''; position: absolute; left: 0; top: 18%; bottom: 18%;
+    width: 0.5px; background: var(--divider);
+  }
+  .kpi-cell-num {
+    font-family: "Hoover", var(--ff); font-size: 32px; font-weight: 700;
+    letter-spacing: -0.02em; color: var(--text); line-height: 1; margin-bottom: 6px;
+  }
+  .kpi-cell-num.red  { color: #991B1B; }
+  .kpi-cell-num.good { color: #15803D; }
+  .kpi-cell-lbl { font-size: 10px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+
+  /* ── Severity distribution bars ── */
+  .sev-dist-row {
+    display: flex; align-items: center; gap: 16px;
+    padding: 13px 0; border-bottom: 0.5px solid var(--border);
+    cursor: pointer; transition: background 120ms ease; border-radius: 6px;
+  }
+  .sev-dist-row:hover { background: rgba(0,0,0,0.02); }
+  .sev-dist-row:last-child { border-bottom: none; }
+  .sev-dist-label { font-size: 12px; font-weight: 500; color: var(--text); width: 78px; flex-shrink: 0; }
+  .sev-dist-track { flex: 1; height: 8px; background: var(--bg); border-radius: 4px; overflow: hidden; }
+  .sev-dist-fill { height: 100%; border-radius: 4px; width: 0; transition: width 700ms cubic-bezier(.22,1,.36,1); }
+  .sev-dist-count { font-size: 13px; font-weight: 600; color: var(--text); width: 42px; text-align: right; font-family: "Hoover", var(--ff); }
+
+  /* ── Incident type bars (horizontal) ── */
+  .type-row {
+    display: flex; align-items: center; gap: 14px;
+    padding: 12px 0; border-bottom: 0.5px solid var(--border);
+    cursor: pointer; transition: background 120ms ease; border-radius: 6px;
+  }
+  .type-row:hover { background: rgba(0,0,0,0.02); }
+  .type-row:last-child { border-bottom: none; }
+  .type-label { font-size: 12px; font-weight: 400; color: var(--text); width: 220px; flex-shrink: 0; }
+  .type-track { flex: 1; height: 7px; background: var(--bg); border-radius: 4px; overflow: hidden; }
+  .type-fill { height: 100%; background: var(--text); border-radius: 4px; width: 0; transition: width 700ms cubic-bezier(.22,1,.36,1); }
+  .type-count { font-size: 12.5px; font-weight: 600; color: var(--text); width: 32px; text-align: right; font-family: "Hoover", var(--ff); }
+
+  /* ── MITRE heatmap ── */
+  .mitre-scroll { overflow-x: auto; padding-bottom: 4px; }
+  .mitre-grid { display: grid; gap: 3px; min-width: 640px; }
+  .mitre-tactic-hd {
+    font-size: 9.5px; font-weight: 700; letter-spacing: 0.04em;
+    color: var(--muted); text-align: center; padding-bottom: 8px;
+    writing-mode: horizontal-tb;
+  }
+  .mitre-cell {
+    border-radius: 5px; padding: 10px 8px; min-height: 52px;
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    cursor: pointer; transition: transform 120ms ease; text-align: center;
+  }
+  .mitre-cell:hover { transform: scale(1.04); }
+  .mitre-cell-id { font-size: 9.5px; font-weight: 700; font-family: var(--ff-mono); }
+  .mitre-cell-count { font-size: 13px; font-weight: 700; margin-top: 2px; }
+  .mitre-empty-cell { background: var(--bg); opacity: 0.4; min-height: 52px; border-radius: 5px; }
+
+  /* ── Network funnel ── */
+  .funnel-wrap { display: flex; flex-direction: column; gap: 0; }
+  .funnel-stage {
+    display: flex; align-items: center; gap: 18px;
+    padding: 16px 0; border-bottom: 0.5px solid var(--border);
+    cursor: pointer; transition: background 120ms ease; border-radius: 6px;
+  }
+  .funnel-stage:hover { background: rgba(0,0,0,0.02); }
+  .funnel-stage:last-child { border-bottom: none; }
+  .funnel-bar-wrap { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+  .funnel-bar-top { display: flex; justify-content: space-between; align-items: baseline; }
+  .funnel-label { font-size: 13px; font-weight: 600; color: var(--text); }
+  .funnel-count { font-size: 18px; font-weight: 700; color: var(--text); font-family: "Hoover", var(--ff); }
+  .funnel-track { height: 10px; background: var(--bg); border-radius: 5px; overflow: hidden; }
+  .funnel-fill { height: 100%; border-radius: 5px; width: 0; transition: width 800ms cubic-bezier(.22,1,.36,1); }
+  .funnel-arrow { display: flex; flex-direction: column; align-items: center; padding: 4px 0 4px 4px; font-size: 10px; color: var(--muted); }
+  .funnel-conv { font-size: 10.5px; font-weight: 600; color: var(--muted); font-family: var(--ff-mono); margin-top: 2px; }
+
+  /* ── Rank lists side by side ── */
+  .rank-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+  .rank-col-title { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin-bottom: 12px; }
+  .rank-row2 {
+    display: flex; align-items: center; gap: 14px; padding: 12px 0;
+    border-bottom: 0.5px solid var(--border); cursor: pointer;
+    transition: background 120ms ease; border-radius: 6px;
+  }
+  .rank-row2:hover { background: rgba(0,0,0,0.02); }
+  .rank-row2:last-child { border-bottom: none; }
+  .rank-num2 { font-size: 11px; font-weight: 600; color: var(--muted); width: 16px; flex-shrink: 0; }
+  .rank-label2 { flex: 1; font-size: 12.5px; font-weight: 400; color: var(--text); font-family: var(--ff-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rank-count2 { font-size: 13px; font-weight: 600; color: var(--text); font-family: "Hoover", var(--ff); }
+
+  /* ── Timeline (campaigns) ── */
+  .camp-row {
+    display: flex; align-items: center; gap: 16px;
+    padding: 13px 0; border-bottom: 0.5px solid var(--border);
+    cursor: pointer; transition: background 120ms ease; border-radius: 6px;
+  }
+  .camp-row:hover { background: rgba(0,0,0,0.02); }
+  .camp-row:last-child { border-bottom: none; }
+  .camp-meta { width: 200px; flex-shrink: 0; }
+  .camp-name { font-size: 12.5px; font-weight: 600; color: var(--text); margin-bottom: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .camp-sub { font-size: 10.5px; font-weight: 300; color: var(--muted); }
+  .camp-track { flex: 1; height: 18px; background: var(--bg); border-radius: 5px; position: relative; overflow: hidden; }
+  .camp-bar { position: absolute; height: 100%; border-radius: 5px; top: 0; }
+  .camp-dur { font-size: 11px; font-weight: 500; color: var(--muted); width: 70px; text-align: right; flex-shrink: 0; font-family: var(--ff-mono); }
+
+  /* ── AI confidence + health check small tiles ── */
+  .small-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .small-tile {
+    background: var(--bg); border-radius: 12px; padding: 22px;
+  }
+  .small-tile-title { font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); margin-bottom: 16px; }
+  .conf-bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .conf-bar-label { font-size: 11.5px; font-weight: 500; color: var(--text); width: 60px; flex-shrink: 0; }
+  .conf-bar-track { flex: 1; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+  .conf-bar-fill { height: 100%; border-radius: 3px; width: 0; transition: width 700ms ease; }
+  .conf-bar-count { font-size: 11.5px; font-weight: 600; color: var(--text); width: 28px; text-align: right; font-family: "Hoover", var(--ff); }
+
+  .health-ok { display: flex; align-items: center; gap: 10px; }
+  .health-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .health-dot.green { background: #15803D; }
+  .health-dot.red { background: #991B1B; animation: pu 1.6s ease-in-out infinite; }
+  .health-text { font-size: 13px; font-weight: 500; color: var(--text); }
+  .health-link-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 9px 0; border-bottom: 0.5px solid var(--border); cursor: pointer;
+    font-size: 12px; color: var(--text); transition: opacity 120ms ease;
+  }
+  .health-link-row:hover { opacity: 0.6; }
+  .health-link-row:last-child { border-bottom: none; }
+
+  /* ── Empty / loading ── */
+  .acc-empty { padding: 32px 0; text-align: center; font-size: 12.5px; font-weight: 300; color: var(--muted); }
+  .acc-skel-row { height: 36px; border-radius: 6px; margin-bottom: 8px; }
+
+  @media (max-width: 900px) {
+    .rank-cols { grid-template-columns: 1fr; }
+    .small-tiles { grid-template-columns: 1fr; }
+    .kpi-strip { flex-wrap: wrap; }
+    .kpi-cell { flex: 1 1 45%; }
+  }
+
+.analytics-owl {
+  position: absolute;
+
+  top: 155px;
+  left: 1100px;
+
+  width: 260px;
+  height: auto;
+
+  opacity: 1; /* 👈 increase visibility */
+  filter: blur(0px);
+
+  z-index: 9999; /* 👈 CRITICAL FIX */
+
+  pointer-events: none;
+
+  mix-blend-mode: normal; /* keeps it solid */
+}
+</style>
+</head>
+<body>
+<img src="../assets/images/analytics_owl.png" class="analytics-owl"/>
+<div id="page-loading" style="max-width:1280px;margin:0 auto;padding:72px 64px">
+  <div class="skeleton" style="width:200px;height:13px;margin-bottom:20px"></div>
+  <div class="skeleton" style="width:340px;height:32px;margin-bottom:48px"></div>
+  <div class="skeleton acc-skel-row" style="height:64px"></div>
+  <div class="skeleton acc-skel-row" style="height:64px"></div>
+  <div class="skeleton acc-skel-row" style="height:64px"></div>
+</div>
+
+<div id="page-content" style="display:none;max-width:1280px;margin:0 auto;padding:0 64px 96px">
+
+  <div class="page-hero" style="padding-left:0;padding-right:0;">
+    <div class="page-eye">Intelligence</div>
+    <h1 class="page-title">Analytics</h1>
+    <div class="page-title-meta">Cross-incident patterns, MITRE coverage, and attacker behavior over the selected window.</div>
+  </div>
+
+  <div id="acc-root"></div>
+
+</div>
+
+<div id="page-error" style="display:none;max-width:1280px;margin:0 auto;padding:0 64px 96px">
+  <div id="error-container"></div>
+</div>
+
+<script src="../shared/api.js"></script>
+<script src="../shared/utils.js"></script>
+<script src="../shared/state.js"></script>
+<script src="../shared/components.js"></script>
+<script>
+(function () {
+
+  var API_BASE = 'http://localhost:8000/api';
+
+  var SEV_COLORS = {
+    critical: '#991B1B',
+    high:     '#C2410C',
+    medium:   '#B45309',
+    low:      '#15803D',
+    closed:   '#787870'
+  };
+
+  var FUNNEL_COLORS = {
+    recon:  '#B45309',
+    egress: '#C2410C',
+    dns:    '#7C3AED',
+    c2:     '#991B1B'
+  };
+
+  SIEM_COMPONENTS.injectNav('analytics');
+  SIEM_COMPONENTS.injectFooter();
+
+  Promise.all([
+    fetchJson(API_BASE + '/alerts?size=500'),
+    fetchJson(API_BASE + '/incidents?size=500')
+  ]).then(function (results) {
+    var alerts = Array.isArray(results[0]) ? results[0] : (results[0].alerts || []);
+    var incidents = Array.isArray(results[1]) ? results[1] : (results[1].incidents || []);
+
+    document.getElementById('page-loading').style.display = 'none';
+    document.getElementById('page-content').style.display = 'block';
+
+    buildPage(alerts, incidents);
+  }).catch(function (err) {
+    document.getElementById('page-loading').style.display = 'none';
+    showError(err.message || 'Failed to load analytics data.');
+  });
+
+  function fetchJson(url) {
+    return fetch(url).then(function (r) {
+      if (!r.ok) throw new Error('Request failed: ' + url);
+      return r.json();
+    });
+  }
+
+  function showError(msg) {
+    document.getElementById('page-error').style.display = 'block';
+    SIEM_COMPONENTS.showError(document.getElementById('error-container'), msg);
+  }
+
+  /* ════════════════════════════════════════════════════════════
+     ACCORDION SHELL
+     ════════════════════════════════════════════════════════════ */
+
+  function makeSection(opts) {
+    // opts: { id, icon, title, sub, badge, bodyHtml, defaultOpen }
+    var section = document.createElement('div');
+    section.className = 'acc-section' + (opts.defaultOpen ? ' open' : '');
+    section.id = opts.id;
+
+    section.innerHTML =
+      '<div class="acc-head">' +
+        '<div class="acc-head-left">' +
+          '<div class="acc-icon">' + opts.icon + '</div>' +
+          '<div class="acc-title-wrap">' +
+            '<div class="acc-title">' + opts.title + '</div>' +
+            (opts.sub ? '<div class="acc-sub">' + opts.sub + '</div>' : '') +
+          '</div>' +
+        '</div>' +
+        '<div class="acc-head-right">' +
+          (opts.badge != null ? '<div class="acc-badge">' + opts.badge + '</div>' : '') +
+          '<div class="acc-chevron"></div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="acc-body-outer">' +
+        '<div class="acc-body">' + opts.bodyHtml + '</div>' +
+      '</div>';
+
+    section.querySelector('.acc-head').addEventListener('click', function () {
+      section.classList.toggle('open');
+    });
+
+    return section;
+  }
+
+  function go(url) { window.location.href = url; }
+
+  /* ════════════════════════════════════════════════════════════
+     BUILD PAGE
+     ════════════════════════════════════════════════════════════ */
+
+  function buildPage(alerts, incidents) {
+    var root = document.getElementById('acc-root');
+    root.innerHTML = '';
+
+    root.appendChild(sectionKpis(alerts, incidents));
+    root.appendChild(sectionSeverity(alerts));
+    root.appendChild(sectionIncidentTypes(incidents));
+    root.appendChild(sectionMitre(alerts, incidents));
+    root.appendChild(sectionNetworkFunnel(incidents));
+    root.appendChild(sectionTopRanks(incidents));
+    root.appendChild(sectionCampaigns(incidents));
+    root.appendChild(sectionHealth(alerts, incidents));
+  }
+
+  /* ── 1. KPI Overview ─────────────────────────────────────── */
+
+  function sectionKpis(alerts, incidents) {
+    var openIncidents = incidents.filter(function (i) {
+      return ((i.incident && i.incident.status) || i.status || '').toLowerCase() === 'open';
+    }).length;
+
+    var dayMs = 24 * 60 * 60 * 1000;
+    var now = Date.now();
+
+    var critical24h = alerts.filter(function (a) {
+      var sev = ((a.rule && a.rule.severity) || a.severity || '').toUpperCase();
+      var ts = a['@timestamp'] ? new Date(a['@timestamp']).getTime() : 0;
+      return sev === 'CRITICAL' && (now - ts) <= dayMs;
+    }).length;
+
+    var closedWithTimes = alerts.filter(function (a) {
+      return a.status === 'CLOSED' && a.opened_at && a.closed_at;
+    });
+    var mttcMinutes = 0;
+    if (closedWithTimes.length) {
+      var totalMs = closedWithTimes.reduce(function (sum, a) {
+        return sum + (new Date(a.closed_at).getTime() - new Date(a.opened_at).getTime());
+      }, 0);
+      mttcMinutes = Math.round((totalMs / closedWithTimes.length) / 60000);
+    }
+
+    var activeIps = {};
+    alerts.forEach(function (a) {
+      if (a.status === 'OPEN' && a.source && a.source.ip) activeIps[a.source.ip] = true;
+    });
+    var activeIpCount = Object.keys(activeIps).length;
+
+    var body =
+      '<div class="kpi-strip">' +
+        '<div class="kpi-cell"><div class="kpi-cell-num' + (openIncidents > 0 ? ' red' : '') + '">' + openIncidents + '</div><div class="kpi-cell-lbl">Open incidents</div></div>' +
+        '<div class="kpi-cell"><div class="kpi-cell-num' + (critical24h > 0 ? ' red' : '') + '">' + critical24h + '</div><div class="kpi-cell-lbl">Critical · 24h</div></div>' +
+        '<div class="kpi-cell"><div class="kpi-cell-num">' + (mttcMinutes || '—') + (mttcMinutes ? '<span style="font-size:16px;">m</span>' : '') + '</div><div class="kpi-cell-lbl">Mean time to close</div></div>' +
+        '<div class="kpi-cell"><div class="kpi-cell-num">' + activeIpCount + '</div><div class="kpi-cell-lbl">Active source IPs</div></div>' +
+      '</div>';
+
+    return makeSection({
+      id: 'sec-kpis',
+      icon: '◆',
+      title: 'Overview',
+      sub: 'Current state across alerts and incidents',
+      bodyHtml: body,
+      defaultOpen: true
+    });
+  }
+
+  /* ── 2. Severity Distribution ────────────────────────────── */
+
+  function sectionSeverity(alerts) {
+    var counts = { critical: 0, high: 0, medium: 0, low: 0 };
+    alerts.forEach(function (a) {
+      var sev = ((a.rule && a.rule.severity) || a.severity || '').toLowerCase();
+      if (counts.hasOwnProperty(sev)) counts[sev]++;
+    });
+
+    var max = Math.max(counts.critical, counts.high, counts.medium, counts.low, 1);
+    var order = ['critical', 'high', 'medium', 'low'];
+
+    var rows = order.map(function (key) {
+      var pct = Math.round((counts[key] / max) * 100);
+      return '<div class="sev-dist-row" data-sev="' + key + '">' +
+        '<div class="sev-dist-label">' + key.charAt(0).toUpperCase() + key.slice(1) + '</div>' +
+        '<div class="sev-dist-track"><div class="sev-dist-fill" style="background:' + SEV_COLORS[key] + ';width:' + pct + '%"></div></div>' +
+        '<div class="sev-dist-count">' + counts[key] + '</div>' +
+      '</div>';
+    }).join('');
+
+    var section = makeSection({
+      id: 'sec-severity',
+      icon: '▦',
+      title: 'Severity distribution',
+      sub: 'All alerts, grouped by severity',
+      badge: alerts.length,
+      bodyHtml: rows || '<div class="acc-empty">No alerts yet.</div>'
+    });
+
+    setTimeout(function () {
+      section.querySelectorAll('.sev-dist-fill').forEach(function (el) { el.style.width = el.style.width; });
+      section.querySelectorAll('.sev-dist-row').forEach(function (row) {
+        row.addEventListener('click', function () {
+          go('alerts.html?severity=' + row.getAttribute('data-sev'));
+        });
+      });
+    }, 0);
+
+    return section;
+  }
+
+  /* ── 3. Incident Type Breakdown ──────────────────────────── */
+
+  function sectionIncidentTypes(incidents) {
+    var counts = {};
+    incidents.forEach(function (i) {
+      var t = (i.incident && i.incident.type) || i.type || 'unknown';
+      counts[t] = (counts[t] || 0) + 1;
+    });
+
+    var entries = Object.keys(counts).map(function (k) { return [k, counts[k]]; });
+    entries.sort(function (a, b) { return b[1] - a[1]; });
+    var max = entries.length ? entries[0][1] : 1;
+
+    var rows = entries.map(function (entry) {
+      var pct = Math.round((entry[1] / max) * 100);
+      var label = SIEM_UTILS.humanize ? SIEM_UTILS.humanize(entry[0]) : entry[0];
+      return '<div class="type-row" data-type="' + SIEM_UTILS.esc(entry[0]) + '">' +
+        '<div class="type-label" title="' + SIEM_UTILS.esc(label) + '">' + SIEM_UTILS.esc(label) + '</div>' +
+        '<div class="type-track"><div class="type-fill" style="width:' + pct + '%"></div></div>' +
+        '<div class="type-count">' + entry[1] + '</div>' +
+      '</div>';
+    }).join('');
+
+    var section = makeSection({
+      id: 'sec-types',
+      icon: '◧',
+      title: 'Incident types',
+      sub: 'What kind of attacks are actually happening',
+      badge: incidents.length,
+      bodyHtml: rows || '<div class="acc-empty">No incidents yet.</div>'
+    });
+
+    setTimeout(function () {
+      section.querySelectorAll('.type-row').forEach(function (row) {
+        row.addEventListener('click', function () {
+          go('incidents.html?type=' + encodeURIComponent(row.getAttribute('data-type')));
+        });
+      });
+    }, 0);
+
+    return section;
+  }
+
+  /* ── 4. MITRE Heatmap ────────────────────────────────────── */
+
+  function sectionMitre(alerts, incidents) {
+    var cellMap = {}; // "tactic||id" -> {count, technique}
+
+    function record(tactic, id, technique) {
+      if (!tactic || !id) return;
+      var key = tactic + '||' + id;
+      if (!cellMap[key]) cellMap[key] = { count: 0, tactic: tactic, id: id, technique: technique || id };
+      cellMap[key].count++;
+    }
+
+    alerts.forEach(function (a) {
+      var m = a.mitre || {};
+      record(m.tactic, m.id, m.technique);
+    });
+    incidents.forEach(function (i) {
+      var ai = i.ai_analysis || {};
+      var chain = Array.isArray(ai.attack_chain) ? ai.attack_chain : [];
+      chain.forEach(function (step) {
+        if (step.technique) {
+          var match = String(step.technique).match(/T\d{4}/);
+          record(step.phase, match ? match[0] : step.technique, step.technique);
+        }
+      });
+    });
+
+    var cells = Object.keys(cellMap).map(function (k) { return cellMap[k]; });
+    cells.sort(function (a, b) { return b.count - a.count; });
+    var maxCount = cells.length ? cells[0].count : 1;
+
+    if (!cells.length) {
+      return makeSection({
+        id: 'sec-mitre',
+        icon: '⬡',
+        title: 'MITRE ATT&CK coverage',
+        sub: 'Tactics and techniques observed across all alerts',
+        bodyHtml: '<div class="acc-empty">No MITRE-tagged activity yet.</div>'
+      });
+    }
+
+    function heatColor(count) {
+      var ratio = count / maxCount;
+      if (ratio > 0.66) return { bg: '#FEF2F2', fg: '#991B1B' };
+      if (ratio > 0.33) return { bg: '#FFF7ED', fg: '#C2410C' };
+      return { bg: '#FFFBEB', fg: '#B45309' };
+    }
+
+    var gridHtml = '<div class="mitre-scroll"><div class="mitre-grid" style="grid-template-columns:repeat(' + Math.min(cells.length, 6) + ',1fr)">' +
+      cells.map(function (c) {
+        var color = heatColor(c.count);
+        return '<div class="mitre-cell" data-id="' + SIEM_UTILS.esc(c.id) + '" style="background:' + color.bg + ';color:' + color.fg + '" title="' + SIEM_UTILS.esc(c.technique) + '">' +
+          '<div class="mitre-cell-id">' + SIEM_UTILS.esc(c.id) + '</div>' +
+          '<div class="mitre-cell-count">' + c.count + '</div>' +
+        '</div>';
+      }).join('') +
+    '</div></div>';
+
+    var section = makeSection({
+      id: 'sec-mitre',
+      icon: '⬡',
+      title: 'MITRE ATT&CK coverage',
+      sub: 'Tactics and techniques observed across all alerts',
+      badge: cells.length + ' techniques',
+      bodyHtml: gridHtml
+    });
+
+    setTimeout(function () {
+      section.querySelectorAll('.mitre-cell').forEach(function (cell) {
+        cell.addEventListener('click', function () {
+          go('alerts.html?mitre=' + encodeURIComponent(cell.getAttribute('data-id')));
+        });
+      });
+    }, 0);
+
+    return section;
+  }
+
+  /* ── 5. Network Story Funnel ─────────────────────────────── */
+
+  function sectionNetworkFunnel(incidents) {
+    var stages = {
+      recon:  { label: 'Reconnaissance detected', types: ['Network Reconnaissance', 'IDS / Network Reconnaissance'] },
+      egress: { label: 'Suspicious egress',       types: ['Suspicious Network Egress'] },
+      dns:    { label: 'DNS / malware staging',   types: ['Suspicious DNS / Malware Staging'] },
+      c2:     { label: 'C2 confirmed',            types: ['Possible Command and Control', 'IDS / Command and Control'] }
+    };
+
+    var counts = {};
+    Object.keys(stages).forEach(function (k) {
+      counts[k] = incidents.filter(function (i) {
+        var t = (i.incident && i.incident.type) || i.type || '';
+        return stages[k].types.indexOf(t) !== -1;
+      }).length;
+    });
+
+    var order = ['recon', 'egress', 'dns', 'c2'];
+    var maxCount = Math.max(counts.recon, counts.egress, counts.dns, counts.c2, 1);
+
+    if (counts.recon + counts.egress + counts.dns + counts.c2 === 0) {
+      return makeSection({
+        id: 'sec-funnel',
+        icon: '▽',
+        title: 'Network attack funnel',
+        sub: 'How recon escalates into command & control',
+        bodyHtml: '<div class="acc-empty">No network-layer incidents yet.</div>'
+      });
+    }
+
+    var stagesHtml = order.map(function (key, idx) {
+      var pct = Math.round((counts[key] / maxCount) * 100);
+      var convText = '';
+      if (idx > 0) {
+        var prevKey = order[idx - 1];
+        var conv = counts[prevKey] > 0 ? Math.round((counts[key] / counts[prevKey]) * 100) : 0;
+        convText = '<div class="funnel-conv">↓ ' + conv + '% escalated</div>';
+      }
+      return (idx > 0 ? '<div class="funnel-arrow">' + convText + '</div>' : '') +
+        '<div class="funnel-stage" data-type="' + stages[key].types[0] + '">' +
+          '<div class="funnel-bar-wrap">' +
+            '<div class="funnel-bar-top"><span class="funnel-label">' + stages[key].label + '</span><span class="funnel-count">' + counts[key] + '</span></div>' +
+            '<div class="funnel-track"><div class="funnel-fill" style="background:' + FUNNEL_COLORS[key] + ';width:' + pct + '%"></div></div>' +
+          '</div>' +
+        '</div>';
+    }).join('');
+
+    var section = makeSection({
+      id: 'sec-funnel',
+      icon: '▽',
+      title: 'Network attack funnel',
+      sub: 'How recon escalates into command & control',
+      bodyHtml: '<div class="funnel-wrap">' + stagesHtml + '</div>'
+    });
+
+    setTimeout(function () {
+      section.querySelectorAll('.funnel-stage').forEach(function (stage) {
+        stage.addEventListener('click', function () {
+          go('incidents.html?type=' + encodeURIComponent(stage.getAttribute('data-type')));
+        });
+      });
+    }, 0);
+
+    return section;
+  }
+
+  /* ── 6. Top Hosts / Top Attacker IPs ─────────────────────── */
+
+  function sectionTopRanks(incidents) {
+    var hostCounts = {};
+    var ipCounts = {};
+
+    incidents.forEach(function (i) {
+      var host = (i.host && i.host.name) || (i.attack_context && i.attack_context.hosts_seen && i.attack_context.hosts_seen[0]);
+      var ip = (i.source && i.source.ip) || (i.attack_context && i.attack_context.source_ips_seen && i.attack_context.source_ips_seen[0]);
+      if (host) hostCounts[host] = (hostCounts[host] || 0) + 1;
+      if (ip) ipCounts[ip] = (ipCounts[ip] || 0) + 1;
+    });
+
+    function topN(obj, n) {
+      return Object.keys(obj)
+        .map(function (k) { return [k, obj[k]]; })
+        .sort(function (a, b) { return b[1] - a[1]; })
+        .slice(0, n);
+    }
+
+    var topHosts = topN(hostCounts, 8);
+    var topIps = topN(ipCounts, 8);
+
+    function rankRows(list, kind) {
+      if (!list.length) return '<div class="acc-empty">No data yet.</div>';
+      return list.map(function (entry, idx) {
+        return '<div class="rank-row2" data-kind="' + kind + '" data-val="' + SIEM_UTILS.esc(entry[0]) + '">' +
+          '<div class="rank-num2">' + (idx + 1) + '</div>' +
+          '<div class="rank-label2">' + SIEM_UTILS.esc(entry[0]) + '</div>' +
+          '<div class="rank-count2">' + entry[1] + '</div>' +
+        '</div>';
+      }).join('');
+    }
+
+    var body = '<div class="rank-cols">' +
+      '<div><div class="rank-col-title">Top targeted hosts</div>' + rankRows(topHosts, 'host') + '</div>' +
+      '<div><div class="rank-col-title">Top attacker IPs</div>' + rankRows(topIps, 'ip') + '</div>' +
+    '</div>';
+
+    var section = makeSection({
+      id: 'sec-ranks',
+      icon: '◎',
+      title: 'Top assets & attackers',
+      sub: 'Most frequently involved hosts and source IPs',
+      bodyHtml: body
+    });
+
+    setTimeout(function () {
+      section.querySelectorAll('.rank-row2').forEach(function (row) {
+        row.addEventListener('click', function () {
+          var kind = row.getAttribute('data-kind');
+          var val = encodeURIComponent(row.getAttribute('data-val'));
+          go(kind === 'host' ? ('incidents.html?host=' + val) : ('incidents.html?source_ip=' + val));
+        });
+      });
+    }, 0);
+
+    return section;
+  }
+
+  /* ── 7. Campaign Timeline ────────────────────────────────── */
+
+  function sectionCampaigns(incidents) {
+    var withTimes = incidents.filter(function (i) {
+      var inc = i.incident || i;
+      return inc.first_seen && inc.last_seen;
+    });
+
+    if (!withTimes.length) {
+      return makeSection({
+        id: 'sec-campaigns',
+        icon: '↝',
+        title: 'Attack campaigns',
+        sub: 'Incidents plotted by duration and severity',
+        bodyHtml: '<div class="acc-empty">No timed incidents yet.</div>'
+      });
+    }
+
+    var minTs = Math.min.apply(null, withTimes.map(function (i) { return new Date((i.incident || i).first_seen).getTime(); }));
+    var maxTs = Math.max.apply(null, withTimes.map(function (i) { return new Date((i.incident || i).last_seen).getTime(); }));
+    var span = Math.max(maxTs - minTs, 1);
+
+    withTimes.sort(function (a, b) {
+      return new Date((b.incident || b).first_seen) - new Date((a.incident || a).first_seen);
+    });
+
+    var rows = withTimes.slice(0, 12).map(function (i) {
+      var inc = i.incident || i;
+      var sev = (inc.severity || '').toLowerCase();
+      var color = SEV_COLORS[sev] || '#787870';
+      var start = new Date(inc.first_seen).getTime();
+      var end = new Date(inc.last_seen).getTime();
+      var leftPct = ((start - minTs) / span) * 100;
+      var widthPct = Math.max(((end - start) / span) * 100, 1.5);
+      var durMin = Math.max(Math.round((end - start) / 60000), 1);
+      var incId = inc.id || i._id || '';
+      var label = inc.name || inc.type || 'Incident';
+      var who = (i.attack_context && i.attack_context.primary_user) || (i.source && i.source.ip) || '';
+
+      return '<div class="camp-row" data-id="' + SIEM_UTILS.esc(incId) + '">' +
+        '<div class="camp-meta">' +
+          '<div class="camp-name" title="' + SIEM_UTILS.esc(label) + '">' + SIEM_UTILS.esc(label) + '</div>' +
+          '<div class="camp-sub">' + SIEM_UTILS.esc(who || '—') + '</div>' +
+        '</div>' +
+        '<div class="camp-track"><div class="camp-bar" style="left:' + leftPct + '%;width:' + widthPct + '%;background:' + color + '"></div></div>' +
+        '<div class="camp-dur">' + durMin + 'm</div>' +
+      '</div>';
+    }).join('');
+
+    var section = makeSection({
+      id: 'sec-campaigns',
+      icon: '↝',
+      title: 'Attack campaigns',
+      sub: 'Most recent incidents plotted by duration and severity',
+      badge: 'last 12',
+      bodyHtml: rows
+    });
+
+    setTimeout(function () {
+      section.querySelectorAll('.camp-row').forEach(function (row) {
+        row.addEventListener('click', function () {
+          var id = row.getAttribute('data-id');
+          if (id) go('incident.html?id=' + encodeURIComponent(id));
+        });
+      });
+    }, 0);
+
+    return section;
+  }
+
+  /* ── 8. AI Confidence + Lifecycle Health ─────────────────── */
+
+  function sectionHealth(alerts, incidents) {
+    var confCounts = { HIGH: 0, MEDIUM: 0, LOW: 0 };
+    incidents.forEach(function (i) {
+      var ai = i.ai_analysis || {};
+      var conf = (ai.confidence || '').toUpperCase();
+      if (confCounts.hasOwnProperty(conf)) confCounts[conf]++;
+    });
+    var maxConf = Math.max(confCounts.HIGH, confCounts.MEDIUM, confCounts.LOW, 1);
+    var confColors = { HIGH: '#15803D', MEDIUM: '#B45309', LOW: '#991B1B' };
+
+    var confHtml = ['HIGH', 'MEDIUM', 'LOW'].map(function (k) {
+      var pct = Math.round((confCounts[k] / maxConf) * 100);
+      return '<div class="conf-bar-row">' +
+        '<div class="conf-bar-label">' + k + '</div>' +
+        '<div class="conf-bar-track"><div class="conf-bar-fill" style="width:' + pct + '%;background:' + confColors[k] + '"></div></div>' +
+        '<div class="conf-bar-count">' + confCounts[k] + '</div>' +
+      '</div>';
+    }).join('');
+
+    // Health check: incidents marked open whose every linked alert is closed
+    var alertStatusById = {};
+    alerts.forEach(function (a) {
+      var aid = (a.alert && a.alert.id) || a._id;
+      if (aid) alertStatusById[aid] = (a.status || '').toUpperCase();
+    });
+
+    var stuckOpen = incidents.filter(function (i) {
+      var inc = i.incident || i;
+      var status = (inc.status || '').toLowerCase();
+      var relatedIds = (i.related && i.related.alert_ids) || [];
+      if (status !== 'open' || !relatedIds.length) return false;
+      return relatedIds.every(function (id) { return alertStatusById[id] === 'CLOSED'; });
+    });
+
+    var healthHtml = '<div class="health-ok">' +
+      '<div class="health-dot ' + (stuckOpen.length ? 'red' : 'green') + '"></div>' +
+      '<div class="health-text">' +
+        (stuckOpen.length
+          ? stuckOpen.length + ' incident(s) stuck open with all alerts closed'
+          : 'All incident statuses match their linked alerts') +
+      '</div>' +
+    '</div>' +
+    (stuckOpen.length ? '<div style="margin-top:14px;">' + stuckOpen.slice(0, 5).map(function (i) {
+      var inc = i.incident || i;
+      return '<div class="health-link-row" data-id="' + SIEM_UTILS.esc(inc.id || i._id || '') + '">' +
+        '<span>' + SIEM_UTILS.esc(inc.name || inc.type || 'Incident') + '</span><span>→</span>' +
+      '</div>';
+    }).join('') + '</div>' : '');
+
+    var body = '<div class="small-tiles">' +
+      '<div class="small-tile"><div class="small-tile-title">AI confidence distribution</div>' + confHtml + '</div>' +
+      '<div class="small-tile"><div class="small-tile-title">Lifecycle health check</div>' + healthHtml + '</div>' +
+    '</div>';
+
+    var section = makeSection({
+      id: 'sec-health',
+      icon: '✓',
+      title: 'AI confidence & system health',
+      sub: 'Model trustworthiness and lifecycle consistency',
+      bodyHtml: body
+    });
+
+    setTimeout(function () {
+      section.querySelectorAll('.health-link-row').forEach(function (row) {
+        row.addEventListener('click', function () {
+          var id = row.getAttribute('data-id');
+          if (id) go('incident.html?id=' + encodeURIComponent(id));
+        });
+      });
+    }, 0);
+
+    return section;
+  }
+
+})();
+</script>
+</body>
+</html>

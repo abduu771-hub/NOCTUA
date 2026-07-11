@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIEM-AI — Alert Detail</title>
+<link rel="stylesheet" href="../assets/css/design-system.css">
+<style>
+
+  /* ── Page base ── */
+  body { background: #F7F7F5; }
+
+  /* ── Scroll reveal ── */
+  .reveal {
+    opacity: 0;
+    transform: translateY(24px);
+    transition: opacity 500ms ease, transform 500ms cubic-bezier(.22,.61,.36,1);
+  }
+  .reveal.visible { opacity: 1; transform: translateY(0); }
+  .reveal-d1 { transition-delay: 0ms;   }
+  .reveal-d2 { transition-delay: 80ms;  }
+  .reveal-d3 { transition-delay: 160ms; }
+  .reveal-d4 { transition-delay: 240ms; }
+  .reveal-d5 { transition-delay: 320ms; }
+  .reveal-d6 { transition-delay: 400ms; }
+  .reveal-d7 { transition-delay: 480ms; }
+  .reveal-d8 { transition-delay: 560ms; }
+
+  /* ── Alert hero ── */
+  .alert-hero {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 72px 64px 56px;
+  }
+  .alert-hero-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12.5px;
+    font-weight: 400;
+    color: #6B6B6B;
+    margin-bottom: 32px;
+    text-decoration: none;
+    transition: color 130ms ease;
+  }
+  .alert-hero-back:hover { color: #111; }
+
+  .alert-badge-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+
+  .alert-title {
+    font-size: 36px;
+    font-weight: 800;
+    color: #111111;
+    letter-spacing: -0.04em;
+    line-height: 1.1;
+    margin-bottom: 12px;
+  }
+
+  .alert-meta {
+    font-size: 12.5px;
+    font-weight: 400;
+    color: #6B6B6B;
+    font-family: var(--ff-mono, monospace);
+    letter-spacing: 0.02em;
+  }
+
+  /* ── Section wrapper ── */
+  .brief-wrap {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 64px 80px;
+    display: flex;
+    flex-direction: column;
+    gap: 64px;
+  }
+
+  /* ── Section divider ── */
+  .section-divider {
+    height: 0.5px;
+    background: #E5E5E2;
+    width: 100%;
+    margin-bottom: 32px;
+  }
+
+  /* ── Section eyebrow ── */
+  .section-eye {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: #6B6B6B;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .section-eye .feather { font-size: 13px; }
+
+  /* ── AI Executive Brief ── */
+  .brief-text {
+    font-size: 17px;
+    font-weight: 400;
+    color: #111111;
+    line-height: 1.85;
+    letter-spacing: -0.005em;
+    max-width: 780px;
+  }
+
+  /* ── Threat Assessment cards ── */
+  .assessment-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: #E5E5E2;
+    border: 1px solid #E5E5E2;
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  .assessment-card {
+    background: #fff;
+    padding: 28px 28px 26px;
+    transition: background 130ms ease;
+  }
+  .assessment-card:hover { background: #FAFAF8; }
+  .assessment-card-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: #6B6B6B;
+    margin-bottom: 14px;
+  }
+  .assessment-card-value {
+    font-size: 22px;
+    font-weight: 800;
+    color: #111;
+    letter-spacing: -0.03em;
+    line-height: 1.15;
+  }
+  .assessment-card-value.critical { color: #991B1B; }
+  .assessment-card-value.high     { color: #C2410C; }
+  .assessment-card-value.medium   { color: #B45309; }
+  .assessment-card-value.low      { color: #15803D; }
+  .assessment-card-sub {
+    font-size: 12.5px;
+    font-weight: 400;
+    color: #6B6B6B;
+    margin-top: 10px;
+    line-height: 1.6;
+  }
+
+  /* ── AI Investigation checklist ── */
+  .checklist {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+  .checklist-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 16px 0;
+    border-bottom: 0.5px solid #E5E5E2;
+    cursor: pointer;
+  }
+  .checklist-item:last-child { border-bottom: none; }
+  .checklist-item:hover .checklist-label { color: #111; }
+
+  .checklist-box {
+    width: 16px;
+    height: 16px;
+    border: 1.5px solid #D1D1CE;
+    border-radius: 3px;
+    flex-shrink: 0;
+    margin-top: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 130ms ease, border-color 130ms ease;
+    background: #fff;
+  }
+  .checklist-item.checked .checklist-box {
+    background: #991B1B;
+    border-color: #991B1B;
+  }
+  .checklist-check {
+    display: none;
+    width: 8px;
+    height: 8px;
+  }
+  .checklist-item.checked .checklist-check { display: block; }
+
+  .checklist-label {
+    font-size: 14px;
+    font-weight: 400;
+    color: #3a3a3a;
+    line-height: 1.6;
+    transition: color 130ms ease;
+    user-select: none;
+  }
+  .checklist-item.checked .checklist-label {
+    color: #9B9B93;
+    text-decoration: line-through;
+    text-decoration-color: #C5C5BF;
+  }
+
+  /* ── Evidence ── */
+  .evidence-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+  }
+  .evidence-row {
+    padding: 14px 0;
+    border-bottom: 0.5px solid #E5E5E2;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding-right: 32px;
+  }
+  .evidence-row:nth-child(even) { padding-right: 0; padding-left: 32px; border-left: 0.5px solid #E5E5E2; }
+  .evidence-label {
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: #991B1B;
+  }
+  .evidence-value {
+    font-size: 12.5px;
+    font-weight: 400;
+    color: #111;
+    font-family: var(--ff-mono, monospace);
+    word-break: break-all;
+    line-height: 1.55;
+  }
+  .evidence-value.plain {
+    font-family: var(--ff, sans-serif);
+    word-break: normal;
+  }
+
+  /* ── AI Notes ── */
+  .notes-list {
+    display: flex;
+    flex-direction: column;
+  }
+  .notes-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 18px 0;
+    border-bottom: 0.5px solid #E5E5E2;
+  }
+  .notes-item:last-child { border-bottom: none; }
+  .notes-index {
+    font-size: 10px;
+    font-weight: 700;
+    color: #C5C5BF;
+    font-family: var(--ff-mono, monospace);
+    letter-spacing: 0.06em;
+    flex-shrink: 0;
+    margin-top: 3px;
+    width: 20px;
+  }
+  .notes-text {
+    font-size: 14px;
+    font-weight: 400;
+    color: #4a4a46;
+    line-height: 1.75;
+  }
+
+  /* ── Metadata footer ── */
+  .brief-meta {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    flex-wrap: wrap;
+    padding-top: 8px;
+    border-top: 0.5px solid #E5E5E2;
+  }
+  .brief-meta-item {
+    font-size: 11px;
+    font-weight: 400;
+    color: #9B9B93;
+    font-family: var(--ff-mono, monospace);
+    letter-spacing: 0.03em;
+  }
+  .brief-meta-item strong {
+    font-weight: 600;
+    color: #6B6B6B;
+  }
+
+  /* ── MITRE pill ── */
+  .mitre-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    background: #F7F4F0;
+    border: 0.5px solid #E5E0D8;
+    font-size: 11px;
+    font-weight: 500;
+    color: #7A5C3A;
+    font-family: var(--ff-mono, monospace);
+    margin-right: 6px;
+    margin-bottom: 6px;
+  }
+
+  /* ── Severity badge override — dark red palette ── */
+  .sev-critical {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 12px;
+    border-radius: 5px;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    background: #FEF2F2;
+    color: #991B1B;
+    border: 0.5px solid #FECACA;
+  }
+  .sev-high {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 12px;
+    border-radius: 5px;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    background: #FFF7ED;
+    color: #C2410C;
+    border: 0.5px solid #FED7AA;
+  }
+/* ── Status control strip ── */
+  .status-strip {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 64px;
+    margin-bottom: 48px;
+  }
+  .status-strip-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 0;
+    border-top: 0.5px solid #E5E5E2;
+    border-bottom: 0.5px solid #E5E5E2;
+  }
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-family: var(--ff-mono, monospace);
+  }
+  .status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .status-pill.open  { color: #15803D; }
+  .status-pill.open  .status-dot {
+    background: #15803D;
+    box-shadow: 0 0 0 0 rgba(21,128,61,0.4);
+    animation: pulse-green 2s infinite;
+  }
+  .status-pill.closed { color: #9B9B93; }
+  .status-pill.closed .status-dot { background: #9B9B93; }
+
+  @keyframes pulse-green {
+    0%   { box-shadow: 0 0 0 0 rgba(21,128,61,0.4); }
+    70%  { box-shadow: 0 0 0 6px rgba(21,128,61,0); }
+    100% { box-shadow: 0 0 0 0 rgba(21,128,61,0); }
+  }
+
+  .status-action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 16px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: background 130ms ease, color 130ms ease, border-color 130ms ease, opacity 130ms ease;
+    font-family: var(--ff, sans-serif);
+    text-transform: uppercase;
+  }
+  .status-action-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .status-action-btn.close-btn {
+    background: #FEF2F2;
+    color: #991B1B;
+    border-color: #FECACA;
+  }
+  .status-action-btn.close-btn:hover:not(:disabled) {
+    background: #991B1B;
+    color: #fff;
+    border-color: #991B1B;
+  }
+  .status-action-btn.reopen-btn {
+    background: #F0FDF4;
+    color: #15803D;
+    border-color: #BBF7D0;
+  }
+  .status-action-btn.reopen-btn:hover:not(:disabled) {
+    background: #15803D;
+    color: #fff;
+    border-color: #15803D;
+  }
+  .status-feedback {
+    font-size: 11.5px;
+    font-weight: 400;
+    color: #9B9B93;
+    font-family: var(--ff-mono, monospace);
+    opacity: 0;
+    transition: opacity 300ms ease;
+  }
+  .status-feedback.visible { opacity: 1; }
+
+  @media (max-width: 768px) {
+    .status-strip { padding-left: 24px; padding-right: 24px; }
+  }
+  /* ── Empty states ── */
+  .brief-empty {
+    font-size: 13.5px;
+    font-weight: 300;
+    color: #9B9B93;
+    font-style: italic;
+    line-height: 1.7;
+  }
+
+  /* ── Loading ── */
+  #page-loading {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 72px 64px;
+  }
+
+  /* ── Error ── */
+  #page-error {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 64px 96px;
+  }
+
+  @media (max-width: 768px) {
+    .alert-hero, .brief-wrap { padding-left: 24px; padding-right: 24px; }
+    .alert-title { font-size: 26px; }
+    .assessment-grid { grid-template-columns: 1fr; }
+    .evidence-grid { grid-template-columns: 1fr; }
+    .evidence-row:nth-child(even) { padding-left: 0; border-left: none; }
+    .brief-text { font-size: 15px; }
+  }
+
+</style>
+</head>
+<body>
+
+<!-- nav injected by JS -->
+
+<!-- ── Loading ── -->
+<div id="page-loading">
+  <div class="skeleton" style="width:80px;height:13px;margin-bottom:32px;border-radius:3px;"></div>
+  <div class="skeleton" style="width:60px;height:22px;margin-bottom:20px;border-radius:4px;"></div>
+  <div class="skeleton" style="width:520px;max-width:100%;height:38px;margin-bottom:14px;border-radius:4px;"></div>
+  <div class="skeleton" style="width:280px;height:13px;border-radius:3px;"></div>
+</div>
+
+<!-- ── Content ── -->
+<div id="page-content" style="display:none;">
+
+  <!-- Hero -->
+  <div class="alert-hero reveal reveal-d1">
+    <a href="alerts.html" class="alert-hero-back">← Alerts</a>
+    <div class="alert-badge-row" id="alert-badge-row"></div>
+    <h1 class="alert-title" id="alert-title">Loading…</h1>
+    <div class="alert-meta" id="alert-meta"></div>
+  </div>
+  <!-- ── Status Control Strip ── -->
+  <div class="status-strip reveal reveal-d2" id="status-strip" style="display:none;">
+    <div class="status-strip-inner">
+      <div class="status-pill" id="status-pill">
+        <div class="status-dot"></div>
+        <span id="status-pill-label">OPEN</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:16px;">
+        <span class="status-feedback" id="status-feedback"></span>
+        <button class="status-action-btn" id="status-action-btn"></button>
+      </div>
+    </div>
+  </div>
+  <div class="brief-wrap">
+
+    <!-- ── 🪶 AI Executive Brief ── -->
+    <div class="reveal reveal-d3">
+      <div class="section-divider"></div>
+      <div class="section-eye"><span class="feather">🪶</span> AI Executive Brief</div>
+      <div class="brief-text" id="brief-text">
+        <span class="brief-empty">No AI analysis available for this alert.</span>
+      </div>
+    </div>
+
+    <!-- ── Threat Assessment ── -->
+    <div class="reveal reveal-d4">
+      <div class="section-divider"></div>
+      <div class="section-eye">Threat Assessment</div>
+      <div class="assessment-grid" id="assessment-grid">
+        <!-- injected by JS -->
+      </div>
+    </div>
+
+    <!-- ── 🪶 AI Investigation ── -->
+    <div class="reveal reveal-d4">
+      <div class="section-divider"></div>
+      <div class="section-eye"><span class="feather">🪶</span> AI Investigation</div>
+      <div class="checklist" id="checklist">
+        <div class="brief-empty">No investigation steps available.</div>
+      </div>
+    </div>
+
+    <!-- ── Evidence ── -->
+    <div class="reveal reveal-d6">
+      <div class="section-divider"></div>
+      <div class="section-eye">Evidence</div>
+      <div class="evidence-grid" id="evidence-grid">
+        <div class="brief-empty">No evidence available.</div>
+      </div>
+    </div>
+
+    <!-- ── 🪶 AI Notes ── -->
+    <div class="reveal reveal-d7">
+      <div class="section-divider"></div>
+      <div class="section-eye"><span class="feather">🪶</span> AI Notes</div>
+      <div class="notes-list" id="notes-list">
+        <div class="brief-empty">No analyst notes available.</div>
+      </div>
+    </div>
+
+    <!-- ── Metadata ── -->
+    <div class="reveal reveal-d8">
+      <div class="brief-meta" id="brief-meta"></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── Error ── -->
+<div id="page-error" style="display:none;">
+  <a href="alerts.html" class="alert-hero-back" style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:400;color:#6B6B6B;margin:72px 0 28px;text-decoration:none;">← Alerts</a>
+  <div id="error-container"></div>
+</div>
+
+<script src="../shared/api.js?v=2"></script>
+<script src="../shared/utils.js?v=2"></script>
+<script src="../shared/state.js?v=2"></script>
+<script src="../shared/components.js?v=2"></script>
+<script>
+(function () {
+  'use strict';
+
+  /* ── Scroll reveal ── */
+  var observer = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.06, rootMargin: '0px 0px -32px 0px' });
+
+  document.querySelectorAll('.reveal').forEach(function (el) {
+    observer.observe(el);
+  });
+
+  /* ── localStorage key builder ── */
+  function checklistKey(alertId) {
+    return 'siem_checklist_' + alertId;
+  }
+
+  SIEM_COMPONENTS.injectNav('alerts');
+  SIEM_COMPONENTS.injectFooter();
+
+  var alertId = SIEM_UTILS.getParam('id');
+  if (!alertId) {
+    showError('No alert ID provided.');
+  } else {
+    loadAlert(alertId);
+  }
+
+  function loadAlert(id) {
+    SIEM_STATE.fetch('alert:' + id, function () {
+      return SIEM_API.getAlert(id);
+    }).then(function (alert) {
+      document.getElementById('page-loading').style.display = 'none';
+      document.getElementById('page-content').style.display = 'block';
+      renderAll(alert, id);
+    }).catch(function (err) {
+      document.getElementById('page-loading').style.display = 'none';
+      showError(err.message.includes('404') ? 'Alert not found.' : err.message);
+    });
+  }
+
+  function renderAll(alert, id) {
+    var rule    = alert.rule           || {};
+    var event   = alert.event          || {};
+    var source  = alert.source         || {};
+    var dest    = alert.destination    || {};
+    var host    = alert.host           || {};
+    var user    = alert.user           || {};
+    var mitre   = alert.mitre          || {};
+    var engine  = alert.engine         || {};
+    var network = alert.network        || {};
+    var evidence = alert.evidence      || {};
+    var ctx     = alert.attack_context || {};
+    var ai      = (alert.ai_analysis && typeof alert.ai_analysis === 'object')
+                    ? alert.ai_analysis : null;
+
+    var ts       = alert['@timestamp'] || '';
+    var severity = (rule.severity || alert.severity || '').toUpperCase();
+    var ruleName = rule.name || rule.id || 'Unknown Rule';
+    var ruleDesc = rule.description || ruleName;
+
+    /* ── Title & badge ── */
+    document.title = 'SIEM-AI — ' + ruleName;
+
+    var badgeHtml = '';
+    var sevLow = severity.toLowerCase();
+    if (sevLow === 'critical') badgeHtml = '<span class="sev-critical">Critical</span>';
+    else if (sevLow === 'high') badgeHtml = '<span class="sev-high">High</span>';
+    else badgeHtml = SIEM_UTILS.severityBadge(sevLow);
+    document.getElementById('alert-badge-row').innerHTML = badgeHtml;
+
+    document.getElementById('alert-title').textContent = ruleDesc;
+
+    var metaParts = [];
+    if (rule.id) metaParts.push('Rule ' + rule.id);
+    if (ts)      metaParts.push(SIEM_UTILS.formatDate(ts));
+    if (engine.version) metaParts.push('Engine v' + engine.version);
+    document.getElementById('alert-meta').textContent = metaParts.join('  ·  ');
+
+    /* ── AI Executive Brief ── */
+    var briefEl = document.getElementById('brief-text');
+    if (ai && ai.executive_brief && ai.executive_brief !== 'not available') {
+      briefEl.textContent = ai.executive_brief;
+    }
+
+    /* ── Threat Assessment ── */
+    var threatLevel  = (ai && ai.threat_level  && ai.threat_level  !== 'not available') ? ai.threat_level  : severity || 'MEDIUM';
+    var confidence   = (ai && ai.confidence    && ai.confidence    !== 'not available') ? ai.confidence    : 'MEDIUM';
+    var bizImpact    = (ai && ai.business_impact && ai.business_impact !== 'not available') ? ai.business_impact : null;
+
+    var threatClass = threatLevel.toLowerCase();
+
+    document.getElementById('assessment-grid').innerHTML =
+      '<div class="assessment-card">'
+        + '<div class="assessment-card-label">Threat Level</div>'
+        + '<div class="assessment-card-value ' + SIEM_UTILS.esc(threatClass) + '">' + SIEM_UTILS.esc(threatLevel) + '</div>'
+        + '<div class="assessment-card-sub">Assessed from alert evidence and rule context.</div>'
+      + '</div>'
+      + '<div class="assessment-card">'
+        + '<div class="assessment-card-label">AI Confidence</div>'
+        + '<div class="assessment-card-value">' + SIEM_UTILS.esc(confidence) + '</div>'
+        + '<div class="assessment-card-sub">Confidence in the explanation, not that an attack occurred.</div>'
+      + '</div>'
+      + '<div class="assessment-card">'
+        + '<div class="assessment-card-label">Business Impact</div>'
+        + '<div class="assessment-card-value" style="font-size:14px;font-weight:600;letter-spacing:-0.01em;">'
+          + (bizImpact ? SIEM_UTILS.esc(bizImpact) : '<span style="color:#9B9B93;font-weight:400;font-size:13px;">Not assessed</span>')
+        + '</div>'
+      + '</div>';
+
+    /* ── AI Investigation checklist ── */
+    var steps = (ai && Array.isArray(ai.investigation_steps)) ? ai.investigation_steps.filter(Boolean) : [];
+    var checklistEl = document.getElementById('checklist');
+
+    if (steps.length) {
+      var storedRaw = localStorage.getItem(checklistKey(id));
+      var stored = {};
+      try { stored = storedRaw ? JSON.parse(storedRaw) : {}; } catch (e) { stored = {}; }
+
+      checklistEl.innerHTML = steps.map(function (step, i) {
+        var isChecked = stored[i] === true;
+        return '<div class="checklist-item' + (isChecked ? ' checked' : '') + '" data-idx="' + i + '">'
+          + '<div class="checklist-box">'
+          + '<svg class="checklist-check" viewBox="0 0 8 8" fill="none">'
+          + '<path d="M1 4L3 6L7 2" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>'
+          + '</svg>'
+          + '</div>'
+          + '<div class="checklist-label">' + SIEM_UTILS.esc(step) + '</div>'
+          + '</div>';
+      }).join('');
+
+      checklistEl.querySelectorAll('.checklist-item').forEach(function (item) {
+        item.addEventListener('click', function () {
+          var idx = parseInt(item.getAttribute('data-idx'), 10);
+          item.classList.toggle('checked');
+          var raw2 = localStorage.getItem(checklistKey(id));
+          var st = {};
+          try { st = raw2 ? JSON.parse(raw2) : {}; } catch (e) { st = {}; }
+          st[idx] = item.classList.contains('checked');
+          localStorage.setItem(checklistKey(id), JSON.stringify(st));
+        });
+      });
+    }
+
+    /* ── Evidence ── */
+    var evGrid = document.getElementById('evidence-grid');
+    var evRows = [];
+
+    /* Core alert fields first */
+    function addEv(label, val, plain) {
+      if (val == null || val === '' || val === '—') return;
+      evRows.push({ label: label, val: String(val), plain: plain });
+    }
+
+    addEv('Rule ID',          rule.id);
+    addEv('Rule Name',        rule.name);
+    addEv('Severity',         severity);
+    addEv('Timestamp',        ts ? SIEM_UTILS.formatDate(ts) : null, true);
+    addEv('Source IP',        source.ip);
+    addEv('Source Port',      source.port);
+    addEv('Destination IP',   dest.ip);
+    addEv('Destination Port', dest.port);
+    addEv('Host',             host.name);
+    addEv('User',             user.name);
+    addEv('Protocol',         network.protocol);
+    addEv('Transport',        network.transport);
+    addEv('Network Bytes',    network.bytes);
+    addEv('Network Packets',  network.packets);
+    addEv('Event Action',     event.action ? SIEM_UTILS.humanize(event.action) : null, true);
+    addEv('Event Count',      event.count);
+    addEv('MITRE ID',         mitre.id);
+    addEv('MITRE Tactic',     mitre.tactic ? SIEM_UTILS.humanize(mitre.tactic) : null, true);
+    addEv('MITRE Technique',  mitre.technique ? SIEM_UTILS.humanize(mitre.technique) : null, true);
+
+    /* attack_context fields */
+    addEv('Attack Type',      ctx.attack_type ? SIEM_UTILS.humanize(ctx.attack_type) : null, true);
+    addEv('Group Key',        ctx.group_key);
+    addEv('Event Count (Window)', ctx.event_count);
+    addEv('Window (s)',       ctx.time_window_seconds);
+    addEv('Threshold',        ctx.threshold);
+    addEv('First Seen',       ctx.first_seen ? SIEM_UTILS.formatDate(ctx.first_seen) : null, true);
+    addEv('Last Seen',        ctx.last_seen  ? SIEM_UTILS.formatDate(ctx.last_seen)  : null, true);
+
+    if (Array.isArray(ctx.source_ips_seen) && ctx.source_ips_seen.length) {
+      addEv('Source IPs Seen', ctx.source_ips_seen.join(', '));
+    }
+    if (Array.isArray(ctx.destination_ips_seen) && ctx.destination_ips_seen.length) {
+      addEv('Destination IPs Seen', ctx.destination_ips_seen.join(', '));
+    }
+    if (Array.isArray(ctx.hosts_seen) && ctx.hosts_seen.length) {
+      addEv('Hosts Seen', ctx.hosts_seen.join(', '));
+    }
+    if (ctx.reason) addEv('Detection Reason', ctx.reason, true);
+
+    /* evidence object fields (skip raw_events) */
+    Object.entries(evidence).forEach(function (entry) {
+      var k = entry[0]; var v = entry[1];
+      if (k === 'raw_events') {
+        if (Array.isArray(v)) addEv('Raw Event Count', v.length);
+        return;
+      }
+      if (v == null || v === '' || (Array.isArray(v) && !v.length)) return;
+      var display = typeof v === 'object' ? JSON.stringify(v) : String(v);
+      evRows.push({ label: SIEM_UTILS.humanize(k), val: display });
+    });
+
+    if (evRows.length) {
+      /* ensure even count for 2-col grid */
+      if (evRows.length % 2 !== 0) evRows.push({ label: '', val: '', empty: true });
+
+      evGrid.innerHTML = evRows.map(function (r) {
+        if (r.empty) return '<div class="evidence-row" style="border-bottom:none;"></div>';
+        return '<div class="evidence-row">'
+          + '<div class="evidence-label">' + SIEM_UTILS.esc(r.label) + '</div>'
+          + '<div class="evidence-value' + (r.plain ? ' plain' : '') + '">' + SIEM_UTILS.esc(r.val) + '</div>'
+          + '</div>';
+      }).join('');
+    }
+
+    /* ── AI Notes ── */
+    var notes = (ai && Array.isArray(ai.analyst_notes)) ? ai.analyst_notes.filter(Boolean) : [];
+    var notesEl = document.getElementById('notes-list');
+    if (notes.length) {
+      notesEl.innerHTML = notes.map(function (note, i) {
+        var num = (i + 1) < 10 ? '0' + (i + 1) : String(i + 1);
+        return '<div class="notes-item">'
+          + '<div class="notes-index">' + num + '</div>'
+          + '<div class="notes-text">' + SIEM_UTILS.esc(note) + '</div>'
+          + '</div>';
+      }).join('');
+    }
+    /* ── Status Control Strip ── */
+    var currentStatus = (alert.status || 'OPEN').toUpperCase();
+    renderStatusStrip(currentStatus, id);
+    /* ── Metadata ── */
+    var metaEl = document.getElementById('brief-meta');
+    var metaItems = [];
+    if (ai) {
+      if (ai.generated_at) metaItems.push('<span class="brief-meta-item"><strong>At</strong> ' + SIEM_UTILS.esc(SIEM_UTILS.formatDate(ai.generated_at)) + '</span>');
+      if (ai.schema_version) metaItems.push('<span class="brief-meta-item"><strong>Schema</strong> v' + SIEM_UTILS.esc(String(ai.schema_version)) + '</span>');
+    }
+    if (!metaItems.length) {
+      metaItems.push('<span class="brief-meta-item" style="color:#C5C5BF;">No AI analysis metadata available</span>');
+    }
+    metaEl.innerHTML = metaItems.join('');
+  }
+  function renderStatusStrip(status, alertId) {
+    var strip    = document.getElementById('status-strip');
+    var pill     = document.getElementById('status-pill');
+    var label    = document.getElementById('status-pill-label');
+    var btn      = document.getElementById('status-action-btn');
+    var feedback = document.getElementById('status-feedback');
+
+    // Track state in a variable — never read from DOM
+    var currentStatus = status.toUpperCase();
+
+    strip.style.display = 'block';
+
+    function applyStatus(s) {
+      currentStatus = s.toUpperCase();
+      var isOpen = currentStatus === 'OPEN';
+
+      pill.className = 'status-pill ' + (isOpen ? 'open' : 'closed');
+      label.textContent = isOpen ? 'OPEN' : 'CLOSED';
+
+      btn.className = 'status-action-btn ' + (isOpen ? 'close-btn' : 'reopen-btn');
+      btn.textContent = isOpen ? 'Close Alert →' : 'Reopen Alert →';
+    }
+
+    applyStatus(currentStatus);
+
+    // Clone button to remove any previously attached listeners
+    var newBtn = btn.cloneNode(true);
+    btn.parentNode.replaceChild(newBtn, btn);
+    btn = newBtn;
+
+    btn.addEventListener('click', function () {
+      var isOpen = currentStatus === 'OPEN';
+      var newStatus = isOpen ? 'CLOSED' : 'OPEN';
+
+      btn.disabled = true;
+      btn.textContent = 'Updating…';
+      feedback.textContent = '';
+      feedback.classList.remove('visible');
+
+      fetch('http://localhost:8000/api/alerts/' + encodeURIComponent(alertId) + '/status', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      }).then(function(r) {
+        if (!r.ok) return r.json().then(function(d){ throw new Error(d.detail || r.statusText); });
+        return r.json();
+      }).then(function () {
+        applyStatus(newStatus);
+        btn.disabled = false;
+
+        feedback.textContent = newStatus === 'CLOSED'
+          ? 'Alert closed. Incident will sync within one cycle.'
+          : 'Alert reopened.';
+        feedback.classList.add('visible');
+
+        setTimeout(function () {
+          feedback.classList.remove('visible');
+        }, 4000);
+      }).catch(function (err) {
+        // Revert visual to actual current status on failure
+        applyStatus(currentStatus);
+        btn.disabled = false;
+        feedback.textContent = 'Failed: ' + (err.message || 'unknown error');
+        feedback.classList.add('visible');
+        setTimeout(function () {
+          feedback.classList.remove('visible');
+        }, 4000);
+      });
+    });
+  }
+  function showError(msg) {
+    document.getElementById('page-loading').style.display = 'none';
+    document.getElementById('page-error').style.display   = 'block';
+    SIEM_COMPONENTS.showError(document.getElementById('error-container'), msg);
+  }
+
+})();
+</script>
+</body>
+</html>

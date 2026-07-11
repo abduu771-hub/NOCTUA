@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIEM-AI — Investigation</title>
+<meta name="description" content="Investigation detail — intelligence report view for a single incident.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="../assets/css/design-system.css">
+</head>
+<body>
+
+<!-- nav injected by JS -->
+
+<!-- Loading state covers the layout until data arrives -->
+<div id="page-loading" style="max-width:1280px;margin:0 auto;padding:72px 64px">
+  <div class="skeleton" style="width:80px;height:14px;margin-bottom:28px"></div>
+  <div class="skeleton" style="width:48px;height:22px;margin-bottom:20px"></div>
+  <div class="skeleton" style="width:420px;height:36px;margin-bottom:12px"></div>
+  <div class="skeleton" style="width:280px;height:14px;margin-bottom:48px"></div>
+</div>
+
+<!-- Main content, hidden until loaded -->
+<div id="page-content" style="display:none">
+
+  <div class="page-hero" id="inc-hero">
+    <a href="investigations.html" class="page-back">← Investigations</a>
+    <div id="inc-badge-row" style="display:flex;align-items:center;gap:10px;margin-bottom:16px"></div>
+    <h1 class="page-title" id="inc-title">Loading…</h1>
+    <div class="page-title-meta" id="inc-meta"></div>
+  </div>
+
+  <div class="detail-layout">
+
+    <!-- ── Main Column ── -->
+    <div class="detail-main">
+
+      <!-- Executive Summary -->
+      <div class="summary-panel" id="summary-panel">
+        <div class="summary-eye">Executive Summary</div>
+        <div class="summary-title" id="summary-title"></div>
+        <div class="summary-body" id="summary-body"></div>
+      </div>
+
+      <!-- Attack Story -->
+      <div class="summary-panel" id="story-panel" style="display:none">
+        <div class="summary-eye">Attack Story</div>
+        <div class="summary-body" id="story-body"></div>
+      </div>
+
+      <!-- Alert Timeline -->
+      <div class="panel">
+        <div class="panel-hd" style="display:flex;align-items:center;justify-content:space-between">
+          <div class="panel-title">Alert Timeline</div>
+          <div id="timeline-count" style="font-size:11px;font-weight:300;color:var(--muted)"></div>
+        </div>
+        <div class="panel-body">
+          <div id="timeline-container">
+            <div class="timeline-wrap">
+              <!-- loading skeleton -->
+              <div class="skeleton-row"><div class="skeleton" style="width:100%;height:14px"></div></div>
+              <div class="skeleton-row"><div class="skeleton" style="width:85%;height:14px"></div></div>
+              <div class="skeleton-row"><div class="skeleton" style="width:92%;height:14px"></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ── Sidebar ── -->
+    <div class="detail-sidebar">
+
+      <!-- Incident Details -->
+      <div class="panel">
+        <div class="panel-hd"><div class="panel-title">Incident Details</div></div>
+        <div class="panel-body" id="panel-details"></div>
+      </div>
+
+      <!-- Users Involved -->
+      <div class="panel">
+        <div class="panel-hd"><div class="panel-title">Users Involved</div></div>
+        <div class="panel-body" id="panel-users"></div>
+      </div>
+
+      <!-- Source IPs -->
+      <div class="panel" id="panel-ips-wrap">
+        <div class="panel-hd"><div class="panel-title">Source IPs</div></div>
+        <div class="panel-body" id="panel-ips"></div>
+      </div>
+
+      <!-- Affected Hosts -->
+      <div class="panel">
+        <div class="panel-hd"><div class="panel-title">Affected Hosts</div></div>
+        <div class="panel-body" id="panel-hosts"></div>
+      </div>
+
+      <!-- Detection Chain -->
+      <div class="panel" id="panel-chain-wrap" style="display:none">
+        <div class="panel-hd"><div class="panel-title">Detection Chain</div></div>
+        <div class="panel-body" style="padding:16px 24px" id="panel-chain"></div>
+      </div>
+
+      <!-- MITRE ATT&CK -->
+      <div class="panel" id="panel-mitre-wrap" style="display:none">
+        <div class="panel-hd"><div class="panel-title">MITRE ATT&amp;CK</div></div>
+        <div class="panel-body" style="padding:16px 24px" id="panel-mitre"></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- Error state -->
+<div id="page-error" style="display:none;max-width:1280px;margin:0 auto;padding:0 64px 96px">
+  <a href="investigations.html" class="page-back">← Investigations</a>
+  <div id="error-container"></div>
+</div>
+
+<!-- Footer injected by JS -->
+
+<script src="../shared/api.js"></script>
+<script src="../shared/utils.js"></script>
+<script src="../shared/state.js"></script>
+<script src="../shared/components.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  SIEM_COMPONENTS.injectNav('investigations');
+  SIEM_COMPONENTS.injectFooter();
+
+  const id = SIEM_UTILS.getParam('id');
+  if (!id) {
+    showFatalError('No investigation ID provided.');
+  } else {
+    loadInvestigation(id);
+  }
+
+  /* ── Load & render ─────────────────────────────────────── */
+  async function loadInvestigation(incId) {
+    try {
+      const [incident, timeline] = await Promise.all([
+        SIEM_STATE.fetch('inc:' + incId, () => SIEM_API.getIncident(incId)),
+        SIEM_STATE.fetch('tl:' + incId,  () => SIEM_API.getIncidentTimeline(incId))
+      ]);
+      document.getElementById('page-loading').style.display = 'none';
+      document.getElementById('page-content').style.display = 'block';
+      renderHero(incident);
+      renderSummary(incident);
+      renderSidebar(incident);
+      renderTimeline(timeline);
+    } catch (err) {
+      document.getElementById('page-loading').style.display = 'none';
+      const errEl = document.getElementById('page-error');
+      errEl.style.display = 'block';
+      SIEM_COMPONENTS.showError(
+        document.getElementById('error-container'),
+        err.message.includes('404') ? 'Investigation not found.' : err.message
+      );
+    }
+  }
+
+  /* ── Hero ──────────────────────────────────────────────── */
+  function renderHero(inc) {
+    const i    = inc.incident       || {};
+    const sev  = i.severity         || '';
+    const stat = i.status           || '';
+    const id   = i.id               || inc._id?.slice(0, 8).toUpperCase() || '—';
+    const title = i.title || i.name || SIEM_UTILS.humanize(i.incident_type) || 'Investigation';
+    const created = SIEM_UTILS.formatDate(inc.created_at);
+    const updated = SIEM_UTILS.formatDate(inc.updated_at);
+
+    document.title = `SIEM-AI — ${title}`;
+
+    document.getElementById('inc-badge-row').innerHTML =
+      SIEM_UTILS.severityBadge(sev) + ' ' + SIEM_UTILS.statusPill(stat);
+
+    document.getElementById('inc-title').textContent = title;
+    document.getElementById('inc-meta').textContent =
+      `Case ${SIEM_UTILS.esc(id)}  ·  Created ${created}  ·  Updated ${updated}`;
+  }
+
+  /* ── Summary ────────────────────────────────────────────── */
+  function renderSummary(inc) {
+    const i    = inc.incident        || {};
+    const ctx  = inc.attack_context  || {};
+    const hosts = SIEM_UTILS.hostsArray(inc.host);
+    const users = ctx.users_seen     || [];
+    const ips   = ctx.source_ips     || [];
+
+    const title = i.title || i.name || SIEM_UTILS.humanize(i.incident_type) || 'Incident';
+    document.getElementById('summary-title').textContent = title;
+
+    let body = i.description || i.summary || '';
+    if (!body) {
+      const parts = [];
+      if (i.severity)       parts.push(`${SIEM_UTILS.capitalize(i.severity)} severity incident`);
+      if (i.incident_type)  parts.push(`classified as ${SIEM_UTILS.humanize(i.incident_type)}`);
+      if (hosts.length)     parts.push(`affecting ${hosts.length} host${hosts.length > 1 ? 's' : ''}`);
+      if (users.length)     parts.push(`with ${users.length} account${users.length > 1 ? 's' : ''} involved`);
+      if (ips.length)       parts.push(`and ${ips.length} source IP${ips.length > 1 ? 's' : ''} identified`);
+      body = parts.length ? parts.join(', ') + '.' : 'Incident under investigation.';
+    }
+    document.getElementById('summary-body').textContent = body;
+
+    // Attack story — only show if there's meaningful context
+    const storyParts = [];
+    if (users.length) storyParts.push(`${users.length} account${users.length > 1 ? 's were' : ' was'} targeted: ${users.slice(0, 5).join(', ')}${users.length > 5 ? ' and ' + (users.length - 5) + ' more' : ''}.`);
+    if (ips.length)   storyParts.push(`${ips.length} source IP${ips.length > 1 ? 's' : ''} observed: ${ips.slice(0, 3).join(', ')}${ips.length > 3 ? ' and others' : ''}.`);
+    if (hosts.length) storyParts.push(`${hosts.length} host${hosts.length > 1 ? 's' : ''} affected: ${hosts.join(', ')}.`);
+    if (ctx.summary)  storyParts.unshift(ctx.summary);
+
+    if (storyParts.length > 0) {
+      document.getElementById('story-panel').style.display = 'block';
+      document.getElementById('story-body').textContent = storyParts.join(' ');
+    }
+  }
+
+  /* ── Sidebar ────────────────────────────────────────────── */
+  function renderSidebar(inc) {
+    const i    = inc.incident       || {};
+    const ctx  = inc.attack_context || {};
+    const rel  = inc.related        || {};
+    const hosts = SIEM_UTILS.hostsArray(inc.host);
+    const users = ctx.users_seen    || [];
+    const ips   = ctx.source_ips    || [];
+    const rules = rel.rule_ids      || [];
+    const techs = ctx.techniques    || [];
+
+    // Details panel
+    document.getElementById('panel-details').innerHTML = [
+      panelRow('Type',     SIEM_UTILS.humanize(i.incident_type) || '—'),
+      panelRow('Severity', SIEM_UTILS.severityBadge(i.severity)),
+      panelRow('Status',   SIEM_UTILS.statusPill(i.status)),
+      panelRow('Created',  SIEM_UTILS.formatDate(inc.created_at)),
+      panelRow('Updated',  SIEM_UTILS.formatDate(inc.updated_at)),
+    ].join('');
+
+    // Users
+    document.getElementById('panel-users').innerHTML = users.length
+      ? users.map(u => panelRow('', `<span class="panel-value mono">${SIEM_UTILS.esc(u)}</span>`, true)).join('')
+      : panelRow('', '—');
+
+    // Source IPs
+    document.getElementById('panel-ips').innerHTML = ips.length
+      ? ips.map(ip => panelRow('', `<span class="panel-value mono">${SIEM_UTILS.esc(ip)}</span>`, true)).join('')
+      : panelRow('', '—');
+
+    // Hosts
+    document.getElementById('panel-hosts').innerHTML = hosts.length
+      ? hosts.map(h => panelRow('', `<span class="panel-value mono">${SIEM_UTILS.esc(h)}</span>`, true)).join('')
+      : panelRow('', '—');
+
+    // Detection chain
+    if (rules.length > 0) {
+      document.getElementById('panel-chain-wrap').style.display = 'block';
+      const chainHtml = rules.map((r, idx) =>
+        `<div class="chain-item">${SIEM_UTILS.esc(r)}${idx < rules.length - 1 ? '<span class="chain-arrow">↓</span>' : ''}</div>`
+      ).join('');
+      document.getElementById('panel-chain').innerHTML = `<div class="chain">${chainHtml}</div>`;
+    }
+
+    // MITRE
+    if (techs.length > 0) {
+      document.getElementById('panel-mitre-wrap').style.display = 'block';
+      document.getElementById('panel-mitre').innerHTML =
+        `<div class="tag-list">${techs.map(t => `<span class="tag indigo">${SIEM_UTILS.esc(t)}</span>`).join('')}</div>`;
+    }
+  }
+
+  /* ── Timeline ───────────────────────────────────────────── */
+  function renderTimeline(events) {
+    const container = document.getElementById('timeline-container');
+    const countEl   = document.getElementById('timeline-count');
+
+    if (!events || events.length === 0) {
+      SIEM_COMPONENTS.showEmpty(container, 'No timeline events', 'No correlated alerts were found for this investigation.');
+      return;
+    }
+
+    countEl.textContent = `${events.length} event${events.length > 1 ? 's' : ''}`;
+
+    const items = events.map(ev => {
+      const dotCls = SIEM_UTILS.severityDotClass(ev.severity);
+      const rule   = ev.rule?.description || ev.rule?.id || 'Detection event';
+      const user   = ev.user?.name;
+      const ip     = ev.source?.ip;
+      const host   = ev.host?.name;
+      const ts     = SIEM_UTILS.formatDate(ev['@timestamp']);
+
+      const metas = [];
+      if (user) metas.push(`<span class="timeline-tag">User <strong>${SIEM_UTILS.esc(user)}</strong></span>`);
+      if (ip)   metas.push(`<span class="timeline-tag">IP <strong>${SIEM_UTILS.esc(ip)}</strong></span>`);
+      if (host) metas.push(`<span class="timeline-tag">Host <strong>${SIEM_UTILS.esc(host)}</strong></span>`);
+
+      return `
+        <div class="timeline-item">
+          <div class="timeline-dot-col">
+            <div class="timeline-dot ${SIEM_UTILS.esc(dotCls)}"></div>
+          </div>
+          <div class="timeline-content">
+            <div class="timeline-ts">${SIEM_UTILS.esc(ts)}</div>
+            <div class="timeline-rule">${SIEM_UTILS.esc(rule)}</div>
+            <div style="margin-top:4px">${SIEM_UTILS.severityBadge(ev.severity)}</div>
+            ${metas.length ? `<div class="timeline-meta" style="margin-top:8px">${metas.join('')}</div>` : ''}
+          </div>
+        </div>`;
+    }).join('');
+
+    container.innerHTML = `<div class="timeline-wrap">${items}</div>`;
+  }
+
+  /* ── Helpers ────────────────────────────────────────────── */
+  function panelRow(label, valueHtml, noLabel = false) {
+    if (noLabel) {
+      return `<div class="panel-row" style="justify-content:flex-start">${valueHtml}</div>`;
+    }
+    return `
+      <div class="panel-row">
+        <span class="panel-label">${SIEM_UTILS.esc(label)}</span>
+        <span>${valueHtml}</span>
+      </div>`;
+  }
+
+  function showFatalError(msg) {
+    document.getElementById('page-loading').style.display = 'none';
+    const errEl = document.getElementById('page-error');
+    errEl.style.display = 'block';
+    SIEM_COMPONENTS.showError(document.getElementById('error-container'), msg);
+  }
+
+})();
+</script>
+</body>
+</html>

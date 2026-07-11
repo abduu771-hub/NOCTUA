@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIEM-AI — Event Explorer</title>
+<meta name="description" content="Normalized event explorer — search, filter, and inspect raw security events.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="../assets/css/design-system.css">
+<style>
+  /* ── Filter bar ─────────────────────────────────────────────── */
+  .filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 16px;
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: var(--card-shadow);
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  .filter-bar input {
+    height: 34px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0 10px;
+    font-family: var(--font-body);
+    font-size: 13px;
+    color: var(--text);
+    background: var(--bg);
+    outline: none;
+    transition: border-color .15s;
+  }
+  .filter-bar input:focus { border-color: var(--text); }
+
+  .filter-input-main { flex: 1; min-width: 200px; }
+  .filter-input-sm   { width: 130px; }
+
+  .btn-search {
+    height: 34px;
+    padding: 0 18px;
+    background: var(--text);
+    color: var(--white);
+    border: none;
+    border-radius: 6px;
+    font-family: var(--font-body);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity .15s;
+    white-space: nowrap;
+  }
+  .btn-search:hover { opacity: .85; }
+  .btn-search:disabled { opacity: .5; cursor: not-allowed; }
+
+  /* ── Table row states ───────────────────────────────────────── */
+  .tr { cursor: pointer; }
+  .tr:hover { background: #fafaf9; }
+
+  /* Expand row */
+  .tr-expand { display: none; }
+  .tr-expand.open { display: table-row; }
+
+  .expand-body { padding: 0; border-top: none !important; }
+
+  .expand-inner {
+    padding: 16px 20px 20px;
+    background: #fafaf9;
+    border-top: 1px solid var(--divider);
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 20px;
+  }
+  @media (max-width: 960px) {
+    .expand-inner { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 600px) {
+    .expand-inner { grid-template-columns: 1fr; }
+  }
+
+  .expand-section-title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+  .expand-kv { display: flex; flex-direction: column; gap: 7px; }
+  .expand-kv-row { display: flex; flex-direction: column; }
+  .expand-kv-key {
+    font-size: 11px;
+    color: var(--muted);
+    font-weight: 500;
+  }
+  .expand-kv-val {
+    font-size: 12.5px;
+    color: var(--text);
+    word-break: break-all;
+    font-family: var(--font-mono, monospace);
+  }
+  .expand-kv-val.plain {
+    font-family: var(--font-body);
+    word-break: normal;
+    white-space: pre-wrap;
+    font-size: 12.5px;
+  }
+
+  /* Full-width message block inside expand */
+  .expand-full-row {
+    grid-column: 1 / -1;
+  }
+  .expand-message-block {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-size: 12.5px;
+    color: var(--text);
+    font-family: var(--font-mono, monospace);
+    white-space: pre-wrap;
+    word-break: break-all;
+    line-height: 1.6;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+
+  /* ── Load more ──────────────────────────────────────────────── */
+  .load-more-wrap {
+    display: flex;
+    justify-content: center;
+    padding: 24px 0 8px;
+  }
+  .btn-load-more {
+    height: 36px;
+    padding: 0 24px;
+    background: var(--white);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-family: var(--font-body);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  .btn-load-more:hover { border-color: var(--text); background: var(--bg); }
+  .btn-load-more:disabled { opacity: .5; cursor: not-allowed; }
+
+  /* ── Misc ───────────────────────────────────────────────────── */
+  .mono { font-family: var(--font-mono, 'DM Mono', monospace); font-size: 12px; }
+  .live-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #3db87a;
+    margin-right: 5px;
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: .4; }
+  }
+</style>
+</head>
+<body>
+
+<!-- nav injected by JS -->
+
+<!-- ══════════════════════════════════════════════════════════════
+     PAGE HERO
+════════════════════════════════════════════════════════════════ -->
+<div class="page-hero">
+  <div class="page-eye">Event Log</div>
+  <h1 class="page-title">Normalized Event Explorer</h1>
+  <p class="page-meta" id="hero-meta">
+    <span class="live-dot"></span>Showing recent events · live
+  </p>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     MAIN CONTENT
+════════════════════════════════════════════════════════════════ -->
+<div class="content">
+
+  <!-- Filter bar — fires new API request on Search click -->
+  <div class="filter-bar">
+    <input
+      id="filter-search"
+      class="filter-input-main"
+      type="search"
+      placeholder="Search events…"
+      autocomplete="off"
+    >
+    <input
+      id="filter-host"
+      class="filter-input-sm"
+      type="search"
+      placeholder="Host…"
+      autocomplete="off"
+    >
+    <input
+      id="filter-user"
+      class="filter-input-sm"
+      type="search"
+      placeholder="User…"
+      autocomplete="off"
+    >
+    <input
+      id="filter-action"
+      class="filter-input-sm"
+      type="search"
+      placeholder="Event action…"
+      autocomplete="off"
+    >
+    <button id="btn-search" class="btn-search">Search</button>
+  </div>
+
+  <!-- Table header / count -->
+  <div class="sec-hd" style="margin-bottom:12px;">
+    <span class="sec-title">Events</span>
+    <span class="sec-meta" id="table-count">—</span>
+  </div>
+
+  <!-- Events table container -->
+  <div class="tbl-wrap" id="events-table-wrap">
+    <!-- Loading injected here -->
+  </div>
+
+  <!-- Load more -->
+  <div class="load-more-wrap" id="load-more-wrap" style="display:none;">
+    <button class="btn-load-more" id="btn-load-more">Load more events</button>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     SCRIPTS
+════════════════════════════════════════════════════════════════ -->
+<script src="../shared/api.js"></script>
+<script src="../shared/utils.js"></script>
+<script src="../shared/state.js"></script>
+<script src="../shared/components.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  /* ── Nav / Footer ─────────────────────────────────────────── */
+  SIEM_COMPONENTS.injectNav('investigations');
+  SIEM_COMPONENTS.injectFooter();
+
+  /* ── DOM refs ─────────────────────────────────────────────── */
+  const wrap         = document.getElementById('events-table-wrap');
+  const heroMeta     = document.getElementById('hero-meta');
+  const tableCount   = document.getElementById('table-count');
+  const searchEl     = document.getElementById('filter-search');
+  const hostEl       = document.getElementById('filter-host');
+  const userEl       = document.getElementById('filter-user');
+  const actionEl     = document.getElementById('filter-action');
+  const btnSearch    = document.getElementById('btn-search');
+  const loadMoreWrap = document.getElementById('load-more-wrap');
+  const btnLoadMore  = document.getElementById('btn-load-more');
+
+  /* ── State ────────────────────────────────────────────────── */
+  var currentSize   = 50;
+  var currentEvents = [];   // raw from last API call
+  var clientQuery   = '';   // client-side search term
+
+  /* ── Build API query params from filter inputs ─────────────── */
+  function buildParams(size) {
+    var params = 'size=' + size;
+    var host   = hostEl.value.trim();
+    var user   = userEl.value.trim();
+    var action = actionEl.value.trim();
+    if (host)   params += '&host='   + encodeURIComponent(host);
+    if (user)   params += '&user='   + encodeURIComponent(user);
+    if (action) params += '&action=' + encodeURIComponent(action);
+    return params;
+  }
+
+  /* ── Fetch events from API ────────────────────────────────── */
+  async function fetchEvents(size) {
+    btnSearch.disabled   = true;
+    btnLoadMore.disabled = true;
+    SIEM_COMPONENTS.showLoading(wrap, 8);
+
+    try {
+      var params = buildParams(size);
+      /* SIEM_API.getEvents may accept a params string or object.
+         Fall back to base call if the API wrapper doesn't accept params. */
+      var data;
+      if (typeof SIEM_API.getEvents === 'function') {
+        try {
+          data = await SIEM_API.getEvents(params);
+        } catch (_) {
+          data = await SIEM_API.getEvents();
+        }
+      }
+
+      currentSize   = size;
+      currentEvents = Array.isArray(data) ? data : [];
+
+      /* Update hero meta with live timestamp */
+      var now = new Date();
+      var timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      heroMeta.innerHTML =
+        '<span class="live-dot"></span>Showing recent events · refreshed at ' + timeStr;
+
+      /* Apply client-side message filter and render */
+      clientQuery = searchEl.value.trim().toLowerCase();
+      renderTable(clientFiltered());
+
+      /* Show/hide load more */
+      loadMoreWrap.style.display = currentEvents.length >= size ? 'flex' : 'none';
+
+    } catch (err) {
+      SIEM_COMPONENTS.showError(wrap, 'Failed to load events. ' + (err.message || ''));
+      heroMeta.textContent = 'Error loading data';
+    } finally {
+      btnSearch.disabled   = false;
+      btnLoadMore.disabled = false;
+    }
+  }
+
+  /* ── Client-side filter on message/action ─────────────────── */
+  function clientFiltered() {
+    if (!clientQuery) return currentEvents;
+    return currentEvents.filter(function (ev) {
+      var msg    = ((ev.message)                                  || '').toLowerCase();
+      var action = ((ev.event && ev.event.action)                 || '').toLowerCase();
+      return msg.includes(clientQuery) || action.includes(clientQuery);
+    });
+  }
+
+  /* ── Render table ─────────────────────────────────────────── */
+  function renderTable(events) {
+    tableCount.textContent = events.length + ' event' +
+      (events.length !== 1 ? 's' : '') + ' shown';
+
+    if (events.length === 0) {
+      SIEM_COMPONENTS.showEmpty(
+        wrap,
+        'No events found',
+        'Adjust your search filters and try again.'
+      );
+      return;
+    }
+
+    var table = document.createElement('table');
+    table.className = 'tbl';
+    table.innerHTML =
+      '<thead><tr>' +
+        '<th>Timestamp</th>' +
+        '<th>Action</th>' +
+        '<th>Host</th>' +
+        '<th>User</th>' +
+        '<th>Source IP</th>' +
+        '<th>Process</th>' +
+        '<th>Message</th>' +
+      '</tr></thead>';
+
+    var tbody = document.createElement('tbody');
+
+    events.forEach(function (ev, idx) {
+      /* ── Extract fields ────────────────────────────────────── */
+      var ts      = SIEM_UTILS.formatDate ? SIEM_UTILS.formatDate(ev['@timestamp'])
+                                          : (ev['@timestamp'] || '—');
+      var action  = (ev.event && ev.event.action) || '';
+      var hname   = (ev.host  && ev.host.name)    || '—';
+      var uname   = (ev.user  && (ev.user.name || (ev.user.effective && ev.user.effective.name))) || '—';
+      var srcip   = (ev.source  && ev.source.ip)  || '—';
+      var proc    = (ev.process && ev.process.name) || '—';
+      var msgFull = ev.message || '';
+      var msgShort= SIEM_UTILS.truncate(msgFull, 60);
+
+      /* ── Main data row ─────────────────────────────────────── */
+      var dataRow = document.createElement('tr');
+      dataRow.className = 'tr';
+      dataRow.dataset.idx = idx;
+
+      dataRow.innerHTML =
+        '<td><span class="inc-u">' + SIEM_UTILS.esc(ts) + '</span></td>' +
+        '<td>' +
+          (action
+            ? '<span class="badge bn">' + SIEM_UTILS.esc(SIEM_UTILS.humanize(action)) + '</span>'
+            : '<span class="inc-u">—</span>') +
+        '</td>' +
+        '<td><span class="inc-h">' + SIEM_UTILS.esc(hname) + '</span></td>' +
+        '<td><span class="inc-u">'  + SIEM_UTILS.esc(uname) + '</span></td>' +
+        '<td><span class="inc-u mono">' + SIEM_UTILS.esc(srcip) + '</span></td>' +
+        '<td><span class="inc-h">'  + SIEM_UTILS.esc(proc)  + '</span></td>' +
+        '<td><span class="inc-u">'  + SIEM_UTILS.esc(msgShort || '—') + '</span></td>';
+
+      /* ── Expand row ────────────────────────────────────────── */
+      var expandRow  = document.createElement('tr');
+      expandRow.className = 'tr-expand';
+
+      var expandCell = document.createElement('td');
+      expandCell.className = 'expand-body';
+      expandCell.colSpan = 7;
+      expandCell.style.padding = '0';
+      expandCell.appendChild(buildExpandInner(ev));
+      expandRow.appendChild(expandCell);
+
+      /* ── Toggle expand ─────────────────────────────────────── */
+      dataRow.addEventListener('click', function () {
+        var isOpen = expandRow.classList.contains('open');
+        expandRow.classList.toggle('open', !isOpen);
+        dataRow.classList.toggle('tr-expanded', !isOpen);
+      });
+
+      tbody.appendChild(dataRow);
+      tbody.appendChild(expandRow);
+    });
+
+    table.appendChild(tbody);
+    wrap.innerHTML = '';
+    wrap.appendChild(table);
+  }
+
+  /* ── Build expand detail content ──────────────────────────── */
+  function buildExpandInner(ev) {
+    var inner = document.createElement('div');
+    inner.className = 'expand-inner';
+
+    /* Full message block (spans all columns) */
+    var msgFull = ev.message || '';
+    if (msgFull) {
+      var msgSec = document.createElement('div');
+      msgSec.className = 'expand-full-row';
+      msgSec.innerHTML = '<div class="expand-section-title">Full Message</div>';
+      var msgBlock = document.createElement('div');
+      msgBlock.className = 'expand-message-block';
+      msgBlock.textContent = msgFull;
+      msgSec.appendChild(msgBlock);
+      inner.appendChild(msgSec);
+    }
+
+    /* Event details */
+    var evtDetails = buildKvSection('Event Details', {
+      'Action'    : (ev.event && ev.event.action)    || null,
+      'Category'  : (ev.event && ev.event.category)  || null,
+      'Type'      : (ev.event && ev.event.type)       || null,
+      'Outcome'   : (ev.event && ev.event.outcome)    || null,
+      'Dataset'   : (ev.event && ev.event.dataset)    || null,
+      'Module'    : (ev.event && ev.event.module)     || null,
+    }, false);
+    if (evtDetails) inner.appendChild(evtDetails);
+
+    /* Process details */
+    if (ev.process && Object.keys(ev.process).length) {
+      var cmdLine = ev.process.command_line || null;
+      var procSec = buildKvSection('Process', {
+        'Name'          : ev.process.name         || null,
+        'PID'           : ev.process.pid          || null,
+        'Parent PID'    : ev.process.parent && ev.process.parent.pid ? ev.process.parent.pid : null,
+        'Working Dir'   : ev.process.working_directory || null,
+      }, false);
+      if (procSec) inner.appendChild(procSec);
+
+      /* Command line gets its own block if present */
+      if (cmdLine) {
+        var cmdSec = document.createElement('div');
+        cmdSec.className = 'expand-full-row';
+        cmdSec.innerHTML = '<div class="expand-section-title">Command Line</div>';
+        var cmdBlock = document.createElement('div');
+        cmdBlock.className = 'expand-message-block';
+        cmdBlock.textContent = cmdLine;
+        cmdSec.appendChild(cmdBlock);
+        inner.appendChild(cmdSec);
+      }
+    }
+
+    /* Network / source details */
+    var netSec = buildKvSection('Network', {
+      'Source IP'   : (ev.source && ev.source.ip)           || null,
+      'Source Port' : (ev.source && ev.source.port)         || null,
+      'Destination' : (ev.destination && ev.destination.ip) || null,
+      'Protocol'    : (ev.network && ev.network.protocol)   || null,
+      'Direction'   : (ev.network && ev.network.direction)  || null,
+    }, false);
+    if (netSec) inner.appendChild(netSec);
+
+    /* User details */
+    var userSec = buildKvSection('User', {
+      'Username'        : (ev.user && ev.user.name)                              || null,
+      'Effective User'  : (ev.user && ev.user.effective && ev.user.effective.name) || null,
+      'Domain'          : (ev.user && ev.user.domain)                            || null,
+      'ID'              : (ev.user && ev.user.id)                                || null,
+    }, false);
+    if (userSec) inner.appendChild(userSec);
+
+    /* Tags */
+    if (ev.tags && ev.tags.length) {
+      var tagSec = document.createElement('div');
+      tagSec.innerHTML = '<div class="expand-section-title">Tags</div>';
+      var tagWrap = document.createElement('div');
+      tagWrap.style.display = 'flex';
+      tagWrap.style.flexWrap = 'wrap';
+      tagWrap.style.gap = '4px';
+      ev.tags.forEach(function (t) {
+        var tag = document.createElement('span');
+        tag.className = 'badge bn';
+        tag.style.fontSize = '11px';
+        tag.textContent = t;
+        tagWrap.appendChild(tag);
+      });
+      tagSec.appendChild(tagWrap);
+      inner.appendChild(tagSec);
+    }
+
+    /* Fallback */
+    if (inner.children.length === 0) {
+      var fallback = document.createElement('div');
+      fallback.style.cssText = 'color:var(--muted);font-size:13px;';
+      fallback.textContent = 'No additional details available for this event.';
+      inner.appendChild(fallback);
+    }
+
+    return inner;
+  }
+
+  /* ── Helper: build a key-value section div ─────────────────── */
+  function buildKvSection(title, fields, useMono) {
+    var entries = Object.keys(fields).filter(function (k) {
+      return fields[k] !== null && fields[k] !== undefined && fields[k] !== '';
+    });
+    if (!entries.length) return null;
+
+    var sec = document.createElement('div');
+    sec.innerHTML = '<div class="expand-section-title">' + SIEM_UTILS.esc(title) + '</div>';
+    var kv = document.createElement('div');
+    kv.className = 'expand-kv';
+
+    entries.forEach(function (k) {
+      var row = document.createElement('div');
+      row.className = 'expand-kv-row';
+      row.innerHTML =
+        '<span class="expand-kv-key">' + SIEM_UTILS.esc(k) + '</span>' +
+        '<span class="expand-kv-val' + (useMono ? '' : ' plain') + '">' +
+          SIEM_UTILS.esc(String(fields[k])) +
+        '</span>';
+      kv.appendChild(row);
+    });
+
+    sec.appendChild(kv);
+    return sec;
+  }
+
+  /* ── Event listeners ──────────────────────────────────────── */
+
+  /* Search button → new API request at default size */
+  btnSearch.addEventListener('click', function () {
+    clientQuery = searchEl.value.trim().toLowerCase();
+    fetchEvents(50);
+  });
+
+  /* Enter key in any filter field also triggers search */
+  [searchEl, hostEl, userEl, actionEl].forEach(function (el) {
+    el.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') {
+        clientQuery = searchEl.value.trim().toLowerCase();
+        fetchEvents(50);
+      }
+    });
+  });
+
+  /* Client-side search — only filters message/action without hitting API */
+  var debounceTimer;
+  searchEl.addEventListener('input', function () {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(function () {
+      clientQuery = searchEl.value.trim().toLowerCase();
+      renderTable(clientFiltered());
+    }, 200);
+  });
+
+  /* Load more — increases size and re-fetches with same API filters */
+  btnLoadMore.addEventListener('click', function () {
+    fetchEvents(currentSize + 50);
+  });
+
+  /* ── Initial load ─────────────────────────────────────────── */
+  fetchEvents(50);
+
+})();
+</script>
+</body>
+</html>

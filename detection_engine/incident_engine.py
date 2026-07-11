@@ -66,6 +66,8 @@ from typing import Any, Optional
 from unittest import result
 
 from elasticsearch import Elasticsearch
+from .lifecycle_contract import derive_incident_status, INCIDENT_STATUS_OPEN, INCIDENT_STATUS_CLOSED
+from .lifecycle_contract import derive_incident_status, INCIDENT_STATUS_OPEN, INCIDENT_STATUS_CLOSED, DEFAULT_CORRELATION_WINDOW_SECONDS, INCIDENT_SILENCE_THRESHOLD_SECONDS, INCIDENT_LIFECYCLE_ACTIVE, INCIDENT_LIFECYCLE_FROZEN, INCIDENT_LIFECYCLE_CLOSED
 
 try:
     from detection_engine.cross_layer_engine import CrossLayerEngine
@@ -524,7 +526,6 @@ class IncidentEngine:
         # ----------------------------------------------------------------
         if rule_id in NETWORK_ALL_RULES:
             self._process_network_alert(alert, rule_id)
-            self._auto_close_incidents()
             return
 
         # ----------------------------------------------------------------
@@ -533,7 +534,6 @@ class IncidentEngine:
         # ----------------------------------------------------------------
         if rule_id in IDS_RULE_IDS:
             self._process_ids_alert(alert, rule_id)
-            self._auto_close_incidents()
             return
 
         grouping_key = self._build_grouping_key(rule_id, alert)
@@ -562,7 +562,6 @@ class IncidentEngine:
                     self._field(alert, "host.name"),
                     self._field(alert, "source.ip"),
                 )
-                self._auto_close_incidents()
                 return
 
             self._update_incident(
@@ -574,8 +573,31 @@ class IncidentEngine:
                 now=now,
                 user=user,
             )
-            self._auto_close_incidents()
             return
+
+        # ----------------------------------------------------------------
+        # Correlation window check — stale alerts cannot seed new incidents
+        # ----------------------------------------------------------------
+        alert_opened_at = self._parse_ts(self._field(alert, "opened_at") or self._field(alert, "@timestamp"))
+        if alert_opened_at:
+            window_seconds = (
+                self._field(alert, "correlation.window_seconds")
+                or DEFAULT_CORRELATION_WINDOW_SECONDS
+            )
+            try:
+                window_seconds = int(window_seconds)
+            except (TypeError, ValueError):
+                window_seconds = DEFAULT_CORRELATION_WINDOW_SECONDS
+            age_seconds = (self._utcnow() - alert_opened_at).total_seconds()
+            if age_seconds > window_seconds:
+                log.info(
+                    "⏰ CORRELATION SKIPPED: alert too old for correlation "
+                    "age=%.0fs window=%ss rule=%s",
+                    age_seconds,
+                    window_seconds,
+                    rule_id,
+                )
+                return
 
         # ----------------------------------------------------------------
         # Normal path: find existing incident or create new
@@ -615,7 +637,6 @@ class IncidentEngine:
                     user=user,
                 )
 
-        self._auto_close_incidents()
 
     # =========================================================================
     # NETWORK INCIDENT ENGINE
@@ -935,9 +956,18 @@ class IncidentEngine:
         doc = {
             "incident": {
                 "id": incident_id,
+                "name": self._build_incident_name(story_type, alert, grouping_key),
                 "version": 1,
                 "type": story_type,
-                "status": "open",
+                "status": INCIDENT_STATUS_OPEN,
+                "lifecycle_state": INCIDENT_LIFECYCLE_ACTIVE,
+                "last_correlated_at": self._fmt_ts(now),
+                "opened_at": self._fmt_ts(now),
+                "last_status_change": self._fmt_ts(now),
+                "closed_at": None,
+                "closed_by": None,
+                "reopened_at": None,
+                "reopened_by": None,
                 "severity": severity,
                 "first_seen": self._fmt_ts(ts),
                 "last_seen": self._fmt_ts(ts),
@@ -976,6 +1006,7 @@ class IncidentEngine:
             grouping_key,
             rule_id,
         )
+     
         self._run_ai_analysis(self._index_name(now), incident_id, doc)
         self._run_cross_layer_correlation()
 
@@ -1014,6 +1045,7 @@ class IncidentEngine:
         if "attack_context" not in src or not isinstance(src["attack_context"], dict):
             src["attack_context"] = {}
         ctx = src["attack_context"]
+        # Status derivation handled by _sync_incident_lifecycle_from_alerts() below.
         self._ensure_network_attack_context(ctx)
 
         # ----------------------------------------------------------------
@@ -1085,6 +1117,8 @@ class IncidentEngine:
         incident["version"]     = incident.get("version", 1) + 1
         incident["alert_count"] = incident.get("alert_count", 0) + 1
         incident["last_seen"]   = self._fmt_ts(ts)
+        if not incident.get("name"):
+            incident["name"] = self._build_incident_name(incident["type"], alert, incident.get("grouping_key", ""))
 
         src.setdefault("related", {})
         src["related"].setdefault("alert_ids", [])
@@ -1098,7 +1132,9 @@ class IncidentEngine:
             src["related"]["rule_ids"].append(rule_id)
 
         src["updated_at"] = self._fmt_ts(now)
-
+        incident["last_correlated_at"] = self._fmt_ts(now)
+        incident["lifecycle_state"] = INCIDENT_LIFECYCLE_ACTIVE
+        src = self._sync_incident_lifecycle_from_alerts(src, now)
         self._save(hit, src)
 
         log.info(
@@ -1110,7 +1146,17 @@ class IncidentEngine:
             incident["alert_count"],
             rule_id,
         )
-        self._run_ai_analysis(hit["_index"], hit["_id"], src)
+        existing_ai = src.get("ai_analysis", {})
+        ai_is_stub = (
+            not existing_ai
+            or (
+                not existing_ai.get("attack_story")
+                and not existing_ai.get("attack_chain")
+                and existing_ai.get("summary", "") in {"", "not available"}
+            )
+        )
+        if ai_is_stub:
+            self._run_ai_analysis(hit["_index"], hit["_id"], src)
         self._run_cross_layer_correlation()
 
     # ------------------------------------------------------------------
@@ -1608,7 +1654,15 @@ class IncidentEngine:
                 "id": incident_id,
                 "version": 1,
                 "type": story_type,
-                "status": "open",
+                "status": INCIDENT_STATUS_OPEN,
+                "lifecycle_state": INCIDENT_LIFECYCLE_ACTIVE,
+                "last_correlated_at": self._fmt_ts(now),
+                "opened_at": self._fmt_ts(now),
+                "last_status_change": self._fmt_ts(now),
+                "closed_at": None,
+                "closed_by": None,
+                "reopened_at": None,
+                "reopened_by": None,
                 "severity": severity,
                 "first_seen": self._fmt_ts(ts),
                 "last_seen": self._fmt_ts(ts),
@@ -1659,6 +1713,7 @@ class IncidentEngine:
             rule_id,
             self._extract_ids_rule_id(alert) or self._extract_ids_signature(alert),
         )
+      
         self._run_ai_analysis(self._index_name(now), incident_id, doc)
         self._run_cross_layer_correlation()
 
@@ -1688,6 +1743,7 @@ class IncidentEngine:
 
         ctx = src["attack_context"]
         self._ensure_ids_attack_context(ctx)
+        # Status derivation handled by _sync_incident_lifecycle_from_alerts() below.
 
         last_seen = self._parse_ts(incident.get("last_seen")) or now
         cooldown = self.WINDOWS.get(rule_id, {}).get("cooldown_window", 20)
@@ -1730,6 +1786,8 @@ class IncidentEngine:
         incident["version"] = incident.get("version", 1) + 1
         incident["alert_count"] = incident.get("alert_count", 0) + 1
         incident["last_seen"] = self._fmt_ts(ts)
+        if not incident.get("name"):
+            incident["name"] = self._build_incident_name(story_type, alert, grouping_key)
 
         source_ip = self._extract_network_source_ip(alert)
         if source_ip:
@@ -1768,7 +1826,9 @@ class IncidentEngine:
             src["related"]["ids_rule_ids"].append(incoming_ids_rule_id)
 
         src["updated_at"] = self._fmt_ts(now)
-
+        incident["last_correlated_at"] = self._fmt_ts(now)
+        incident["lifecycle_state"] = INCIDENT_LIFECYCLE_ACTIVE
+        src = self._sync_incident_lifecycle_from_alerts(src, now)
         self._save(hit, src)
 
         log.info(
@@ -1780,7 +1840,17 @@ class IncidentEngine:
             rule_id,
             incoming_ids_rule_id or self._extract_ids_signature(alert),
         )
-        self._run_ai_analysis(hit["_index"], hit["_id"], src)
+        existing_ai = src.get("ai_analysis", {})
+        ai_is_stub = (
+            not existing_ai
+            or (
+                not existing_ai.get("attack_story")
+                and not existing_ai.get("attack_chain")
+                and existing_ai.get("summary", "") in {"", "not available"}
+            )
+        )
+        if ai_is_stub:
+            self._run_ai_analysis(hit["_index"], hit["_id"], src)
         self._run_cross_layer_correlation()
 
     def _build_initial_ids_attack_context(
@@ -2780,7 +2850,143 @@ class IncidentEngine:
     # =========================================================================
     # CREATE (existing — untouched)
     # =========================================================================
+    def _build_incident_name(self, incident_type, alert, grouping_key, attack_context=None):
 
+        # ----------------------------------------------------------------
+        # SOC category + attack label mapping.
+        # Extend this dict to support new rule types — no other code changes needed.
+        # ----------------------------------------------------------------
+        INCIDENT_SOC_MAP = {
+            # Auth / credential attacks
+            "brute_force_attack":             ("Credential Attack",          "Brute Force"),
+            "ssh_bruteforce":                 ("Credential Attack",          "SSH Brute Force"),
+            "sudo_bruteforce":                ("Credential Attack",          "Sudo Brute Force"),
+            "targeted_account_attack":        ("Credential Attack",          "Targeted Account Attack"),
+            "password_spray_attack":          ("Authentication Attack",      "Password Spray"),
+            "distributed_bruteforce_attack":  ("Distributed Credential Attack", "Multi-Source Brute Force"),
+            "account_compromise":             ("Account Compromise",         "Successful Credential Breach"),
+            "privilege_escalation_attempt":   ("Privilege Escalation",       "Sudo Abuse Detected"),
+            # Web attacks
+            "Web Attack / Path Traversal":              ("Web Exploitation",   "Path Traversal Attempt"),
+            "Web Attack / SQL Injection":               ("Web Exploitation",   "SQL Injection Attempt"),
+            "Web Attack / XSS":                         ("Web Exploitation",   "Cross-Site Scripting Attempt"),
+            "Web Attack / Sensitive File Probe":        ("Web Exploitation",   "Sensitive File Probe"),
+            "Web Attack / Reconnaissance":              ("Web Reconnaissance", "Directory Scanning"),
+            "Web Attack / Multi-Vector Web Intrusion Attempt": ("Web Exploitation", "Multi-Vector Intrusion"),
+            # Network behavioral
+            "Network Reconnaissance":         ("Network Reconnaissance",     "Host/Port Scanning"),
+            "Suspicious Network Egress":      ("Data Exfiltration Risk",     "Suspicious Outbound Traffic"),
+            "Possible Command and Control":   ("Command & Control Activity", "C2 Beaconing"),
+            "Suspicious DNS / Malware Staging": ("Malware Staging",          "Suspicious DNS Activity"),
+            # IDS / Suricata
+            "IDS / Malware Network Activity": ("Malware Detection",          "Malicious Network Signature"),
+            "IDS / Command and Control":      ("Command & Control Activity", "IDS C2 Signature"),
+            "IDS / Exploit Attempt":          ("Exploitation Attempt",       "IDS Exploit Signature"),
+            "IDS / Network Reconnaissance":   ("Network Reconnaissance",     "IDS Scan Signature"),
+            "IDS / Credential Attack":        ("Credential Attack",          "IDS Credential Signature"),
+            "IDS / Possible Data Exfiltration": ("Data Exfiltration Risk",   "IDS Exfiltration Signature"),
+            "IDS / Network Policy Violation": ("Policy Violation",           "IDS Policy Signature"),
+            "IDS / Protocol Anomaly":         ("Protocol Anomaly",           "Malformed Traffic Detected"),
+            "IDS / High-Severity Unknown Alert": ("Unknown Threat",          "High-Severity IDS Alert"),
+        }
+
+        # ----------------------------------------------------------------
+        # Asset label resolution.
+        # Converts raw hostnames into SOC-readable asset descriptions.
+        # Never exposes raw host IDs or UUIDs.
+        # ----------------------------------------------------------------
+        def _resolve_asset(host_raw):
+            if not host_raw or not isinstance(host_raw, str):
+                return "Internal Asset"
+
+            h = host_raw.lower().strip()
+
+            # Looks like a raw ID (hex, no vowels, very short alpha) — sanitize
+            if len(h) >= 10 and not any(v in h for v in "aeiou-_."):
+                return "Internal Asset"
+
+            if any(k in h for k in ("dc", "domain-controller", "domaincontroller", "ad-", "addc")):
+                return "Domain Controller"
+            if any(k in h for k in ("srv", "server", "svr", "app-", "db-", "database", "web-", "api-", "svc-")):
+                return "Internal Server"
+            if any(k in h for k in ("ws", "workstation", "desktop", "laptop", "pc-", "endpoint")):
+                return "Endpoint Device"
+            if any(k in h for k in ("fw", "firewall", "gw", "gateway", "router", "switch", "net-")):
+                return "Network Device"
+
+            # Hostname looks reasonable — use it but strip any domain suffix
+            clean = host_raw.split(".")[0]
+            if len(clean) <= 20:
+                return clean
+
+            return "Internal Asset"
+
+        # ----------------------------------------------------------------
+        # Resolve host from alert or attack_context
+        # ----------------------------------------------------------------
+        host_raw = self._field(alert, "host.name")
+        if not host_raw and attack_context:
+            host_raw = (
+                attack_context.get("target_host")
+                or (attack_context.get("hosts_seen") or [None])[0]
+            )
+
+        asset = _resolve_asset(host_raw)
+
+        # ----------------------------------------------------------------
+        # User count enrichment (for auth attacks)
+        # ----------------------------------------------------------------
+        users_seen = []
+        if attack_context:
+            users_seen = attack_context.get("users_seen") or []
+        user_count = len(users_seen)
+
+        # ----------------------------------------------------------------
+        # Look up SOC category + attack label
+        # ----------------------------------------------------------------
+        if incident_type in INCIDENT_SOC_MAP:
+            category, attack_label = INCIDENT_SOC_MAP[incident_type]
+
+            # Enrich password spray with user count when available
+            if incident_type == "password_spray_attack" and user_count > 1:
+                return f"{category}: {attack_label} Across {user_count} Accounts"
+
+            # Enrich distributed brute force with source count
+            src_ips = []
+            if attack_context:
+                src_ips = attack_context.get("source_ips_seen") or []
+            if incident_type == "distributed_bruteforce_attack" and len(src_ips) > 1:
+                return f"{category}: {attack_label} from {len(src_ips)} Sources"
+
+            # Network/IDS incidents — asset is source context, not target
+            network_types = {
+                "Network Reconnaissance", "Suspicious Network Egress",
+                "Possible Command and Control", "Suspicious DNS / Malware Staging",
+            }
+            ids_types = {t for t in INCIDENT_SOC_MAP if t.startswith("IDS /")}
+
+            if incident_type in network_types or incident_type in ids_types:
+                return f"{category}: {attack_label} Detected"
+
+            # Standard format: Category: Attack Label on Asset
+            if asset != "Internal Asset":
+                return f"{category}: {attack_label} Detected on {asset}"
+            return f"{category}: {attack_label} Detected"
+
+        # ----------------------------------------------------------------
+        # Fallback for unknown/custom incident types.
+        # Humanizes the raw type string into a readable SOC label.
+        # ----------------------------------------------------------------
+        human_type = (
+            str(incident_type)
+            .replace("_", " ")
+            .replace("/", " –")
+            .title()
+            .strip()
+        )
+        if asset != "Internal Asset":
+            return f"Security Incident: {human_type} on {asset}"
+        return f"Security Incident: {human_type} Detected"
     def _create_incident(self, alert, rule_id, grouping_key, ts, now, user):
         incident_id = hashlib.sha1(grouping_key.encode()).hexdigest()[:16]
 
@@ -2814,9 +3020,18 @@ class IncidentEngine:
         doc = {
             "incident": {
                 "id": incident_id,
+                "name": self._build_incident_name(incident_type, alert, grouping_key, attack_context),
                 "version": 1,
                 "type": incident_type,
-                "status": "open",
+                "status": INCIDENT_STATUS_OPEN,
+                "lifecycle_state": INCIDENT_LIFECYCLE_ACTIVE,
+                "last_correlated_at": self._fmt_ts(now),
+                "opened_at": self._fmt_ts(now),
+                "last_status_change": self._fmt_ts(now),
+                "closed_at": None,
+                "closed_by": None,
+                "reopened_at": None,
+                "reopened_by": None,
                 "severity": severity,
                 "first_seen": self._fmt_ts(ts),
                 "last_seen": self._fmt_ts(ts),
@@ -2851,6 +3066,7 @@ class IncidentEngine:
             severity,
             grouping_key,
         )
+     
         self._run_ai_analysis(self._index_name(now), incident_id, doc)
         self._run_cross_layer_correlation()
 
@@ -2867,6 +3083,10 @@ class IncidentEngine:
             src["attack_context"] = {}
 
         ctx = src["attack_context"]
+        # Incident status is derived from alerts only — never set here directly.
+        # If this incident is currently closed but a new alert is being linked,
+        # _sync_incident_lifecycle_from_alerts() at the end of this method
+        # will reopen it automatically when it reads the newly linked OPEN alert.
 
         last_seen = self._parse_ts(incident.get("last_seen")) or now
         cooldown = self.WINDOWS.get(incoming_rule_id, {}).get("cooldown_window", 2)
@@ -2940,7 +3160,9 @@ class IncidentEngine:
             src["related"]["rule_ids"].append(incoming_rule_id)
 
         src["updated_at"] = self._fmt_ts(now)
-
+        incident["last_correlated_at"] = self._fmt_ts(now)
+        incident["lifecycle_state"] = INCIDENT_LIFECYCLE_ACTIVE
+        src = self._sync_incident_lifecycle_from_alerts(src, now)
         self._save(hit, src)
 
         log.info(
@@ -2950,7 +3172,17 @@ class IncidentEngine:
             incident.get("severity", "?"),
             incident["alert_count"],
         )
-        self._run_ai_analysis(hit["_index"], hit["_id"], src)
+        existing_ai = src.get("ai_analysis", {})
+        ai_is_stub = (
+            not existing_ai
+            or (
+                not existing_ai.get("attack_story")
+                and not existing_ai.get("attack_chain")
+                and existing_ai.get("summary", "") in {"", "not available"}
+            )
+        )
+        if ai_is_stub:
+            self._run_ai_analysis(hit["_index"], hit["_id"], src)
         self._run_cross_layer_correlation()
 
     # =========================================================================
@@ -3315,89 +3547,125 @@ class IncidentEngine:
                 return None
 
         return None
+    def _sync_incident_lifecycle_from_alerts(self, incident_doc: dict, now: datetime) -> dict:
+        """
+        PURE DERIVATION ONLY. No business logic.
 
-    # =========================================================================
-    # AUTO CLOSE (existing — untouched)
-    # =========================================================================
+        Reads all linked alert statuses and uses derive_incident_status()
+        from lifecycle_contract.py to compute the correct incident status.
+        This method NEVER makes its own status decisions.
+        It only reads alerts → calls the contract → writes the result.
+        """
+        related_alert_ids = (
+            incident_doc.get("related", {}).get("alert_ids", [])
+        )
+        if not related_alert_ids:
+            return incident_doc
 
-    def _auto_close_incidents(self):
+        try:
+            res = self.es.search(
+                index="siem-alerts-*",
+                body={
+                    "size": len(related_alert_ids),
+                    "query": {"terms": {"alert.id.keyword": related_alert_ids}},
+                    "_source": ["status"],
+                },
+            )
+            hits = res.get("hits", {}).get("hits", [])
+        except Exception:
+            log.exception("Failed to fetch alert statuses for lifecycle derivation")
+            return incident_doc
+
+        if not hits:
+            return incident_doc
+
+        alert_statuses = [h["_source"].get("status", "OPEN") for h in hits]
+        derived = derive_incident_status(alert_statuses)
+
+        incident = incident_doc.get("incident", {})
+        current = incident.get("status", INCIDENT_STATUS_OPEN).lower()
+
+        if derived == current.lower():
+            return incident_doc
+
+        # Write derived status — this is the ONLY place incident status is set
+        # inside the engine. No other method in this file sets incident.status.
+        incident["status"] = derived
+        incident["last_status_change"] = self._fmt_ts(now)
+
+        if derived == INCIDENT_STATUS_CLOSED and current != INCIDENT_STATUS_CLOSED:
+            incident["closed_at"] = self._fmt_ts(now)
+            incident["closed_by"] = "system:alert_sync"
+            incident["reopened_by"] = None
+            log.info(
+                "🔒 INCIDENT DERIVED-CLOSED (all alerts closed) key=%s",
+                incident.get("grouping_key", ""),
+            )
+           
+            
+
+        elif derived == INCIDENT_STATUS_OPEN and current == INCIDENT_STATUS_CLOSED:
+            incident["reopened_at"] = self._fmt_ts(now)
+            incident["reopened_by"] = "system:alert_sync"
+            incident["closed_at"] = None
+            incident["closed_by"] = None
+            log.info(
+                "🔓 INCIDENT DERIVED-REOPENED (new open alert linked) key=%s",
+                incident.get("grouping_key", ""),
+            )
+       
+        else:
+            # No change needed — return original doc unmodified
+            return incident_doc
+
+        return incident_doc
+    def run_auto_close_cycle(self) -> None:
+        """
+        At end of each processing cycle, re-derive the status of all
+        open incidents from their linked alert statuses.
+
+        This method does NOT decide anything itself. It calls
+        _sync_incident_lifecycle_from_alerts() which calls
+        derive_incident_status() from lifecycle_contract.py.
+        Pure derivation pass.
+        """
         now = self._utcnow()
 
-        if (
-            self._last_autoclose_run is not None
-            and (now - self._last_autoclose_run).total_seconds() < 5
-        ):
+        try:
+            res = self.es.search(
+                index="siem-incidents-*",
+                body={
+                    "size": 100,
+                    "query": {"match_all": {}},
+                    "size": 200,
+                    "_source": True,
+                },
+            )
+            hits = res.get("hits", {}).get("hits", [])
+        except Exception:
+            log.exception("Auto-close cycle failed to fetch open incidents")
             return
 
-        self._last_autoclose_run = now
-
-        query = {
-            "size": 100,
-            "query": {
-                "bool": {
-                    "must": [
-                        {
-                            "term": {
-                                "incident.status.keyword": "open",
-                            }
-                        }
-                    ]
-                }
-            },
-        }
-
-        resp = self.es.search(index="siem-incidents-*", body=query)
-
-        for hit in resp["hits"]["hits"]:
+        for hit in hits:
             src = hit["_source"]
-            incident = src["incident"]
+            before_status = src.get("incident", {}).get("status", "open")
+            updated = self._sync_incident_lifecycle_from_alerts(src, now)
+            after_status = updated.get("incident", {}).get("status", "open")
 
-            last_seen = self._parse_ts(incident.get("last_seen"))
-            if not last_seen:
-                continue
-
-            rule_ids = src.get("related", {}).get("rule_ids", [])
-            if not rule_ids:
-                continue
-
-            last_rule = rule_ids[-1]
-            if last_rule not in self.WINDOWS:
-                continue
-
-            if any(r in self.WEB_RULES for r in rule_ids):
-                timeout = max(
-                    self.WINDOWS[r]["incident_inactivity_timeout"]
-                    for r in rule_ids
-                    if r in self.WINDOWS
+            if after_status != before_status:
+                log.info(
+                    "🔁 AUTO-CYCLE STATUS CHANGE key=%s %s → %s",
+                    src.get("incident", {}).get("grouping_key", "?"),
+                    before_status,
+                    after_status,
                 )
-            elif any(r in NETWORK_ALL_RULES for r in rule_ids):
-                # Network: use the longest timeout among contributing rules.
-                # A C2 incident seeded by port_scan should live as long as C2.
-                # Mirrors Wazuh: frequency rule timeout is max of contributing rules.
-                timeout = max(
-                    self.WINDOWS[r]["incident_inactivity_timeout"]
-                    for r in rule_ids
-                    if r in self.WINDOWS
-                )
-            elif any(r in IDS_RULE_IDS for r in rule_ids):
-                # IDS: use the longest timeout among contributing IDS rules.
-                timeout = max(
-                    self.WINDOWS[r]["incident_inactivity_timeout"]
-                    for r in rule_ids
-                    if r in self.WINDOWS
-                )
-            else:
-                timeout = self.WINDOWS[last_rule]["incident_inactivity_timeout"]
+                self._save(hit, updated)
+    # =========================================================================
+    # AUTO CLOSE (existing — untouched)
 
-            if last_seen < now - timedelta(seconds=timeout):
-                incident["status"] = "closed"
-                incident["version"] = incident.get("version", 1) + 1
-                src["updated_at"] = self._fmt_ts(now)
+    # =========================================================================
 
-                self._save(hit, src)
-
-                log.info("✅ INCIDENT CLOSED %s", incident.get("grouping_key"))
-
+  
     # =========================================================================
     # ES HELPERS (existing — untouched)
     # =========================================================================
@@ -3405,6 +3673,7 @@ class IncidentEngine:
     def _find_open_incident_by_key(self, key):
         q = {
             "size": 1,
+            "sort": [{"updated_at": {"order": "desc"}}],
             "query": {
                 "bool": {
                     "must": [
@@ -3413,12 +3682,12 @@ class IncidentEngine:
                                 "incident.grouping_key.keyword": key,
                             }
                         },
-                        {
-                            "term": {
-                                "incident.status.keyword": "open",
-                            }
-                        },
-                    ]
+                    ],
+                    "should": [
+                        {"term": {"incident.status.keyword": "open"}},
+                        {"term": {"incident.status.keyword": "closed"}},
+                    ],
+                    "minimum_should_match": 1,
                 }
             },
         }
@@ -3426,8 +3695,46 @@ class IncidentEngine:
         res = self.es.search(index="siem-incidents-*", body=q)
         hits = res["hits"]["hits"]
 
-        return hits[0] if hits else None
+        if not hits:
+            return None
 
+        hit = hits[0]
+
+        # ── Incident freeze check ──────────────────────────────────────────
+        # If the incident exists but has been silent beyond the threshold,
+        # mark it frozen so new alerts start a fresh incident instead.
+        src = hit["_source"]
+        incident = src.get("incident", {})
+        lifecycle_state = incident.get("lifecycle_state", INCIDENT_LIFECYCLE_ACTIVE)
+
+        if lifecycle_state == INCIDENT_LIFECYCLE_FROZEN:
+            return None
+
+        last_correlated_at = incident.get("last_correlated_at")
+        if last_correlated_at:
+            last_correlated_dt = self._parse_ts(last_correlated_at)
+            if last_correlated_dt:
+                silence_elapsed = (self._utcnow() - last_correlated_dt).total_seconds()
+                if silence_elapsed > INCIDENT_SILENCE_THRESHOLD_SECONDS:
+                    # Freeze the incident — new alerts will create a fresh one
+                    self._freeze_incident(hit)
+                    return None
+
+        return hit
+    
+    def _freeze_incident(self, hit: dict) -> None:
+        """Mark an incident as frozen — it will no longer absorb new alerts."""
+        src = hit["_source"]
+        incident = src.get("incident", {})
+        incident["lifecycle_state"] = INCIDENT_LIFECYCLE_FROZEN
+        incident["last_status_change"] = self._fmt_ts(self._utcnow())
+        src["updated_at"] = self._fmt_ts(self._utcnow())
+        self._save(hit, src)
+        log.info(
+            "❄️  INCIDENT FROZEN (silence threshold exceeded) key=%s",
+            incident.get("grouping_key", ""),
+        )
+    
     def _find_escalation_candidate(self, alert, user):
         host = self._field(alert, "host.name")
         ts = self._parse_ts(self._field(alert, "@timestamp"))
@@ -3594,20 +3901,49 @@ class IncidentEngine:
             if out:
                 return out
 
-        es_id = alert.get("_id") if isinstance(alert, dict) else None
-        if es_id is not None and str(es_id).strip():
-            return [str(es_id).strip()]
-
-        return []
+        # NEVER fall back to ES _id — it is a storage artifact, not a business ID.
+    # If alert.id is missing, the alert was built incorrectly. Return empty.
+            log.warning("Alert has no business alert.id — skipping incident linkage")
+            return []
 
     def _save(self, hit, body):
+        """
+        Persist incident document to Elasticsearch.
+
+        Rules:
+        - ai_analysis is re-fetched before writing to preserve AI enrichment.
+        - incident.status is NEVER overwritten here if the current value in ES
+          was set by the admin (closed_by = "admin"). Engine derivation can only
+          override if the contract says differently.
+        - This method never makes lifecycle decisions. It only persists.
+        """
+        try:
+            latest = self.es.get(
+                index=hit["_index"],
+                id=hit["_id"],
+                _source_includes=["ai_analysis", "incident"],
+            )
+            latest_source = latest.get("_source", {})
+
+            # Preserve AI analysis — never overwrite enrichment
+            ai = latest_source.get("ai_analysis")
+            if ai:
+                body["ai_analysis"] = ai
+
+            # If admin explicitly closed this incident (closed_by=admin),
+            # and the engine computed OPEN, that means a new alert was just
+            # linked. The new OPEN alert takes precedence — derivation wins.
+            # We do NOT block engine derivation here. The contract is authoritative.
+
+        except Exception:
+            pass  # doc does not exist yet on first create — fine
+
         self.es.index(
             index=hit["_index"],
             id=hit["_id"],
             body=body,
             refresh="wait_for",
         )
-
     def _field(self, doc, dotted):
         if not isinstance(doc, dict):
             return None

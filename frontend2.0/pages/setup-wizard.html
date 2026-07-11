@@ -1,0 +1,903 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NOCTUA — Setup</title>
+<link rel="stylesheet" href="../assets/css/design-system.css">
+<style>
+
+  body {
+    background: var(--bg);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 72px 24px 96px;
+  }
+
+  /* ── Wizard shell ── */
+  .wizard-shell {
+    width: 100%;
+    max-width: 520px;
+  }
+
+  /* ── Logo / wordmark ── */
+  .wizard-brand {
+    text-align: center;
+    margin-bottom: 56px;
+  }
+  .wizard-brand-name {
+    font-family: var(--ff-display);
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--text);
+  }
+  .wizard-brand-sub {
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-top: 4px;
+  }
+
+  /* ── Step indicator ── */
+  .wizard-steps {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 48px;
+  }
+  .wizard-step-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--border);
+    transition: background 300ms ease, transform 300ms ease;
+  }
+  .wizard-step-dot.active {
+    background: var(--text);
+    transform: scale(1.4);
+  }
+  .wizard-step-dot.done {
+    background: #15803D;
+  }
+
+  /* ── Card ── */
+  .wizard-card {
+    background: var(--white);
+    border: 0.5px solid var(--border);
+    border-radius: 18px;
+    box-shadow: var(--card-shadow);
+    padding: 48px 48px 40px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* ── Step panels ── */
+  .wizard-panel {
+    display: none;
+    animation: none;
+  }
+  .wizard-panel.active {
+    display: block;
+  }
+  .wizard-panel.slide-in-right {
+    animation: slideInRight 380ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .wizard-panel.slide-in-left {
+    animation: slideInLeft 380ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .wizard-panel.slide-out-left {
+    animation: slideOutLeft 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .wizard-panel.slide-out-right {
+    animation: slideOutRight 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  @keyframes slideInRight {
+    from { opacity: 0; transform: translateX(48px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes slideInLeft {
+    from { opacity: 0; transform: translateX(-48px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes slideOutLeft {
+    from { opacity: 1; transform: translateX(0); }
+    to   { opacity: 0; transform: translateX(-48px); }
+  }
+  @keyframes slideOutRight {
+    from { opacity: 1; transform: translateX(0); }
+    to   { opacity: 0; transform: translateX(48px); }
+  }
+
+  /* ── Step eye / title ── */
+  .step-eye {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+  .step-title {
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--text);
+    letter-spacing: -0.03em;
+    line-height: 1.2;
+    margin-bottom: 8px;
+  }
+  .step-desc {
+    font-size: 13px;
+    font-weight: 300;
+    color: var(--muted);
+    line-height: 1.7;
+    margin-bottom: 36px;
+  }
+
+  /* ── Form fields ── */
+  .field {
+    margin-bottom: 20px;
+  }
+  .field-label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text);
+    margin-bottom: 8px;
+  }
+  .field-input {
+    width: 100%;
+    font-family: var(--ff);
+    font-size: 13.5px;
+    color: var(--text);
+    background: var(--bg);
+    border: 0.5px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 16px;
+    outline: none;
+    transition: border-color 150ms ease, box-shadow 150ms ease;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  .field-input::placeholder {
+    color: var(--muted);
+    font-weight: 300;
+  }
+  .field-input:focus {
+    border-color: var(--text);
+    box-shadow: 0 0 0 3px rgba(14,14,13,0.06);
+    background: var(--white);
+  }
+  .field-input.error {
+    border-color: #B91C1C;
+    box-shadow: 0 0 0 3px rgba(185,28,28,0.08);
+  }
+  .field-hint {
+    font-size: 11.5px;
+    font-weight: 300;
+    color: var(--muted);
+    margin-top: 6px;
+    line-height: 1.5;
+  }
+  .field-error {
+    font-size: 11.5px;
+    font-weight: 500;
+    color: #B91C1C;
+    margin-top: 6px;
+    display: none;
+  }
+  .field-error.visible {
+    display: block;
+  }
+
+  /* ── Field row (two side by side) ── */
+  .field-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+
+  /* ── Actions ── */
+  .wizard-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 36px;
+    padding-top: 28px;
+    border-top: 0.5px solid var(--border);
+    gap: 12px;
+  }
+  .wizard-actions.first {
+    justify-content: flex-end;
+  }
+
+  .btn-back {
+    font-family: var(--ff);
+    font-size: 13px;
+    font-weight: 400;
+    color: var(--muted);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    transition: color 150ms ease;
+    letter-spacing: 0.01em;
+  }
+  .btn-back:hover { color: var(--text); }
+
+  .btn-continue {
+    font-family: var(--ff);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--white);
+    background: var(--text);
+    border: 1px solid var(--text);
+    padding: 11px 28px;
+    border-radius: 9px;
+    cursor: pointer;
+    transition: background 200ms ease, color 200ms ease;
+    letter-spacing: 0.02em;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .btn-continue:hover {
+    background: var(--white);
+    color: var(--text);
+  }
+  .btn-continue:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .btn-activate {
+    font-family: var(--ff);
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--white);
+    background: #991B1B;
+    border: 1px solid #991B1B;
+    padding: 14px 36px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background 200ms ease, color 200ms ease;
+    letter-spacing: 0.02em;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    justify-content: center;
+    margin-top: 8px;
+  }
+  .btn-activate:hover {
+    background: var(--white);
+    color: #991B1B;
+  }
+  .btn-activate:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* ── Summary (step 5) ── */
+  .summary-group {
+    margin-bottom: 28px;
+  }
+  .summary-group-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 0.5px solid var(--border);
+  }
+  .summary-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 9px 0;
+    border-bottom: 0.5px solid var(--border);
+  }
+  .summary-row:last-child { border-bottom: none; }
+  .summary-key {
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+  .summary-val {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text);
+    font-family: var(--ff-mono);
+    text-align: right;
+    word-break: break-all;
+  }
+  .summary-val.empty {
+    color: var(--muted);
+    font-weight: 300;
+    font-family: var(--ff);
+    font-style: italic;
+  }
+
+  /* ── Global error ── */
+  .wizard-global-error {
+    background: #FEF2F2;
+    border: 0.5px solid #FECACA;
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-size: 13px;
+    font-weight: 400;
+    color: #B91C1C;
+    margin-bottom: 20px;
+    display: none;
+    line-height: 1.5;
+  }
+  .wizard-global-error.visible { display: block; }
+
+  /* ── Success state ── */
+  .wizard-success {
+    text-align: center;
+    padding: 16px 0 8px;
+  }
+  .wizard-success-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: #F0FDF4;
+    border: 0.5px solid #BBF7D0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 24px;
+  }
+  .wizard-success-title {
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--text);
+    letter-spacing: -0.03em;
+    margin-bottom: 10px;
+  }
+  .wizard-success-body {
+    font-size: 13.5px;
+    font-weight: 300;
+    color: var(--muted);
+    line-height: 1.7;
+    margin-bottom: 32px;
+  }
+
+  @media (max-width: 600px) {
+    .wizard-card { padding: 32px 24px 28px; }
+    .field-row { grid-template-columns: 1fr; }
+    body { padding: 48px 16px 72px; }
+  }
+
+</style>
+</head>
+<body>
+
+<div class="wizard-shell">
+
+  <!-- Brand -->
+  <div class="wizard-brand">
+    <div class="wizard-brand-name">NOCTUA</div>
+    <div class="wizard-brand-sub">Initial Setup</div>
+  </div>
+
+  <!-- Step dots -->
+  <div class="wizard-steps" id="wizard-steps">
+    <div class="wizard-step-dot active" data-step="0"></div>
+    <div class="wizard-step-dot" data-step="1"></div>
+    <div class="wizard-step-dot" data-step="2"></div>
+    <div class="wizard-step-dot" data-step="3"></div>
+    <div class="wizard-step-dot" data-step="4"></div>
+  </div>
+
+  <!-- Card -->
+  <div class="wizard-card">
+
+    <!-- ── STEP 1 — Admin Account ── -->
+    <div class="wizard-panel active" id="panel-0">
+      <div class="step-eye">Step 1 of 5</div>
+      <div class="step-title">Create your admin account</div>
+      <div class="step-desc">This is the only account that can access NOCTUA. Choose a strong password.</div>
+
+      <div class="field">
+        <label class="field-label" for="f-username">Username</label>
+        <input class="field-input" type="text" id="f-username" placeholder="admin" autocomplete="username">
+        <div class="field-error" id="e-username">Username is required.</div>
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="f-email">Email</label>
+        <input class="field-input" type="email" id="f-email" placeholder="you@company.com" autocomplete="email">
+        <div class="field-hint">Used for alert notifications. Must be a valid format.</div>
+        <div class="field-error" id="e-email">Enter a valid email address.</div>
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="f-password">Password</label>
+        <input class="field-input" type="password" id="f-password" placeholder="Minimum 8 characters" autocomplete="new-password">
+        <div class="field-error" id="e-password">Password must be at least 8 characters.</div>
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="f-confirm">Confirm Password</label>
+        <input class="field-input" type="password" id="f-confirm" placeholder="Repeat your password" autocomplete="new-password">
+        <div class="field-error" id="e-confirm">Passwords do not match.</div>
+      </div>
+
+      <div class="wizard-actions first">
+        <button class="btn-continue" onclick="goNext(0)">Continue →</button>
+      </div>
+    </div>
+
+    <!-- ── STEP 2 — Monitoring Sources ── -->
+    <div class="wizard-panel" id="panel-1">
+      <div class="step-eye">Step 2 of 5</div>
+      <div class="step-title">Monitoring sources</div>
+      <div class="step-desc">Enter the file paths NOCTUA will monitor. These are stored as configuration — Filebeat integration is coming in a future release.</div>
+
+      <div class="field">
+        <label class="field-label" for="f-auth-path">Authentication Logs</label>
+        <input class="field-input" type="text" id="f-auth-path" placeholder="/var/log/auth.log">
+        <div class="field-hint">Linux auth log, typically <code style="font-family:var(--ff-mono);font-size:11px;">/var/log/auth.log</code></div>
+        <div class="field-error" id="e-auth-path">Enter a valid absolute path (must start with /).</div>
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="f-web-path">Web Server Logs</label>
+        <input class="field-input" type="text" id="f-web-path" placeholder="/var/log/nginx/access.log">
+        <div class="field-hint">Nginx or Apache access log path.</div>
+        <div class="field-error" id="e-web-path">Enter a valid absolute path (must start with /).</div>
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="f-network-path">Network / IDS Logs</label>
+        <input class="field-input" type="text" id="f-network-path" placeholder="/var/log/suricata/eve.json">
+        <div class="field-hint">Suricata EVE JSON log path.</div>
+        <div class="field-error" id="e-network-path">Enter a valid absolute path (must start with /).</div>
+      </div>
+
+      <div class="wizard-actions">
+        <button class="btn-back" onclick="goBack(1)">← Back</button>
+        <button class="btn-continue" onclick="goNext(1)">Continue →</button>
+      </div>
+    </div>
+
+    <!-- ── STEP 3 — Notifications ── -->
+    <div class="wizard-panel" id="panel-2">
+      <div class="step-eye">Step 3 of 5</div>
+      <div class="step-title">Notifications</div>
+      <div class="step-desc">Where should NOCTUA send alerts? All fields are optional — you can configure these later.</div>
+
+      <div class="field">
+        <label class="field-label" for="f-notif-email">Notification Email</label>
+        <input class="field-input" type="email" id="f-notif-email" placeholder="soc@company.com">
+        <div class="field-hint">Receives high-severity incident emails.</div>
+        <div class="field-error" id="e-notif-email">Enter a valid email address.</div>
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="f-tg-token">Telegram Bot Token</label>
+        <input class="field-input" type="text" id="f-tg-token" placeholder="110201543:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw">
+        <div class="field-hint">From @BotFather on Telegram.</div>
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="f-tg-chat">Telegram Chat ID</label>
+        <input class="field-input" type="text" id="f-tg-chat" placeholder="-100123456789">
+        <div class="field-hint">Your group or channel chat ID.</div>
+      </div>
+
+      <div class="wizard-actions">
+        <button class="btn-back" onclick="goBack(2)">← Back</button>
+        <button class="btn-continue" onclick="goNext(2)">Continue →</button>
+      </div>
+    </div>
+
+    <!-- ── STEP 4 — Detection Settings ── -->
+    <div class="wizard-panel" id="panel-3">
+      <div class="step-eye">Step 4 of 5</div>
+      <div class="step-title">Detection settings</div>
+      <div class="step-desc">Tune how NOCTUA groups and silences incidents. The defaults work well for most environments.</div>
+
+      <div class="field">
+        <label class="field-label" for="f-corr-window">Correlation Window</label>
+        <input class="field-input" type="number" id="f-corr-window" placeholder="7200" value="7200" min="60">
+        <div class="field-hint">Seconds NOCTUA looks back when grouping related alerts into one incident. Default: 7200 (2 hours).</div>
+        <div class="field-error" id="e-corr-window">Enter a number of seconds (minimum 60).</div>
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="f-silence">Incident Silence Threshold</label>
+        <input class="field-input" type="number" id="f-silence" placeholder="1800" value="1800" min="60">
+        <div class="field-hint">Seconds of inactivity before an incident is considered resolved. Default: 1800 (30 minutes).</div>
+        <div class="field-error" id="e-silence">Enter a number of seconds (minimum 60).</div>
+      </div>
+
+      <div class="wizard-actions">
+        <button class="btn-back" onclick="goBack(3)">← Back</button>
+        <button class="btn-continue" onclick="goNext(3)">Continue →</button>
+      </div>
+    </div>
+
+    <!-- ── STEP 5 — Review & Activate ── -->
+    <div class="wizard-panel" id="panel-4">
+      <div class="step-eye">Step 5 of 5</div>
+      <div class="step-title">Review & activate</div>
+      <div class="step-desc">Everything looks right? Click activate and NOCTUA will start watching.</div>
+
+      <div class="wizard-global-error" id="global-error"></div>
+
+      <div class="summary-group">
+        <div class="summary-group-label">Admin Account</div>
+        <div class="summary-row">
+          <span class="summary-key">Username</span>
+          <span class="summary-val" id="s-username">—</span>
+        </div>
+        <div class="summary-row">
+          <span class="summary-key">Email</span>
+          <span class="summary-val" id="s-email">—</span>
+        </div>
+        <div class="summary-row">
+          <span class="summary-key">Password</span>
+          <span class="summary-val">••••••••</span>
+        </div>
+      </div>
+
+      <div class="summary-group">
+        <div class="summary-group-label">Monitoring Sources</div>
+        <div class="summary-row">
+          <span class="summary-key">Auth logs</span>
+          <span class="summary-val" id="s-auth-path">—</span>
+        </div>
+        <div class="summary-row">
+          <span class="summary-key">Web logs</span>
+          <span class="summary-val" id="s-web-path">—</span>
+        </div>
+        <div class="summary-row">
+          <span class="summary-key">Network / IDS</span>
+          <span class="summary-val" id="s-network-path">—</span>
+        </div>
+      </div>
+
+      <div class="summary-group">
+        <div class="summary-group-label">Notifications</div>
+        <div class="summary-row">
+          <span class="summary-key">Email</span>
+          <span class="summary-val" id="s-notif-email">—</span>
+        </div>
+        <div class="summary-row">
+          <span class="summary-key">Telegram</span>
+          <span class="summary-val" id="s-telegram">—</span>
+        </div>
+      </div>
+
+      <div class="summary-group">
+        <div class="summary-group-label">Detection Settings</div>
+        <div class="summary-row">
+          <span class="summary-key">Correlation window</span>
+          <span class="summary-val" id="s-corr">7200s</span>
+        </div>
+        <div class="summary-row">
+          <span class="summary-key">Silence threshold</span>
+          <span class="summary-val" id="s-silence">1800s</span>
+        </div>
+      </div>
+
+      <button class="btn-activate" id="btn-activate" onclick="activate()">
+        Activate NOCTUA
+      </button>
+
+      <div class="wizard-actions" style="margin-top:16px;padding-top:16px;">
+        <button class="btn-back" onclick="goBack(4)">← Back</button>
+        <span></span>
+      </div>
+    </div>
+
+    <!-- ── SUCCESS ── -->
+    <div class="wizard-panel" id="panel-success">
+      <div class="wizard-success">
+        <div class="wizard-success-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#15803D" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+        </div>
+        <div class="wizard-success-title">NOCTUA is active.</div>
+        <div class="wizard-success-body">Your admin account has been created and configuration saved. Redirecting to Mission Control…</div>
+        <div class="dot" style="margin:0 auto;"></div>
+      </div>
+    </div>
+
+  </div>
+  <!-- /wizard-card -->
+
+</div>
+<!-- /wizard-shell -->
+
+<script>
+(function () {
+  'use strict';
+
+  var API_BASE = 'http://localhost:8000';
+  var currentStep = 0;
+  var TOTAL_STEPS = 5;
+
+  /* ── Validators ── */
+  function isValidEmail(v) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v.trim());
+  }
+
+  function isValidPath(v) {
+    var s = v.trim();
+    return s.length > 1 && /^\/[a-zA-Z0-9/_\-\.]+$/.test(s) && !s.endsWith('/');
+  }
+
+  function showErr(id, msg) {
+    var el = document.getElementById('e-' + id);
+    var inp = document.getElementById('f-' + id);
+    if (!el || !inp) return;
+    el.textContent = msg || el.textContent;
+    el.classList.add('visible');
+    inp.classList.add('error');
+  }
+
+  function clearErr(id) {
+    var el = document.getElementById('e-' + id);
+    var inp = document.getElementById('f-' + id);
+    if (el) el.classList.remove('visible');
+    if (inp) inp.classList.remove('error');
+  }
+
+  function val(id) {
+    var el = document.getElementById('f-' + id);
+    return el ? el.value.trim() : '';
+  }
+
+  /* ── Attach blur validators ── */
+  function onBlur(id, fn) {
+    var el = document.getElementById('f-' + id);
+    if (!el) return;
+    el.addEventListener('blur', function () { fn(); });
+    el.addEventListener('input', function () { clearErr(id); });
+  }
+
+  onBlur('username', function () {
+    if (!val('username')) showErr('username', 'Username is required.');
+  });
+  onBlur('email', function () {
+    var v = val('email');
+    if (v && !isValidEmail(v)) showErr('email', 'Enter a valid email address.');
+  });
+  onBlur('password', function () {
+    if (val('password').length > 0 && val('password').length < 8)
+      showErr('password', 'Password must be at least 8 characters.');
+  });
+  onBlur('confirm', function () {
+    if (val('confirm') && val('confirm') !== val('password'))
+      showErr('confirm', 'Passwords do not match.');
+  });
+  onBlur('notif-email', function () {
+    var v = val('notif-email');
+    if (v && !isValidEmail(v)) showErr('notif-email', 'Enter a valid email address.');
+  });
+  onBlur('auth-path', function () {
+    var v = val('auth-path');
+    if (v && !isValidPath(v)) showErr('auth-path', 'Enter a valid absolute path (must start with /).');
+  });
+  onBlur('web-path', function () {
+    var v = val('web-path');
+    if (v && !isValidPath(v)) showErr('web-path', 'Enter a valid absolute path (must start with /).');
+  });
+  onBlur('network-path', function () {
+    var v = val('network-path');
+    if (v && !isValidPath(v)) showErr('network-path', 'Enter a valid absolute path (must start with /).');
+  });
+
+  /* ── Step validators ── */
+  function validateStep(step) {
+    var ok = true;
+
+    if (step === 0) {
+      if (!val('username')) { showErr('username', 'Username is required.'); ok = false; }
+      var em = val('email');
+      if (!em) { showErr('email', 'Email is required.'); ok = false; }
+      else if (!isValidEmail(em)) { showErr('email', 'Enter a valid email address.'); ok = false; }
+      var pw = val('password');
+      if (!pw) { showErr('password', 'Password is required.'); ok = false; }
+      else if (pw.length < 8) { showErr('password', 'Password must be at least 8 characters.'); ok = false; }
+      if (!val('confirm')) { showErr('confirm', 'Please confirm your password.'); ok = false; }
+      else if (val('confirm') !== pw) { showErr('confirm', 'Passwords do not match.'); ok = false; }
+    }
+
+    if (step === 1) {
+      var ap = val('auth-path');
+      var wp = val('web-path');
+      var np = val('network-path');
+      if (ap && !isValidPath(ap)) { showErr('auth-path', 'Enter a valid absolute path (must start with /).'); ok = false; }
+      if (wp && !isValidPath(wp)) { showErr('web-path', 'Enter a valid absolute path (must start with /).'); ok = false; }
+      if (np && !isValidPath(np)) { showErr('network-path', 'Enter a valid absolute path (must start with /).'); ok = false; }
+    }
+
+    if (step === 2) {
+      var ne = val('notif-email');
+      if (ne && !isValidEmail(ne)) { showErr('notif-email', 'Enter a valid email address.'); ok = false; }
+    }
+
+    if (step === 3) {
+      var cw = parseInt(val('corr-window'), 10);
+      var sl = parseInt(val('silence'), 10);
+      if (isNaN(cw) || cw < 60) { showErr('corr-window', 'Enter a number of seconds (minimum 60).'); ok = false; }
+      if (isNaN(sl) || sl < 60) { showErr('silence', 'Enter a number of seconds (minimum 60).'); ok = false; }
+    }
+
+    return ok;
+  }
+
+  /* ── Transition ── */
+  function transition(fromIdx, toIdx, direction) {
+    var fromPanel = document.getElementById('panel-' + fromIdx);
+    var toPanel   = document.getElementById('panel-' + toIdx);
+
+    var outClass = direction === 'forward' ? 'slide-out-left' : 'slide-out-right';
+    var inClass  = direction === 'forward' ? 'slide-in-right' : 'slide-in-left';
+
+    fromPanel.classList.add(outClass);
+
+    setTimeout(function () {
+      fromPanel.classList.remove('active', outClass);
+      toPanel.classList.add('active', inClass);
+      setTimeout(function () {
+        toPanel.classList.remove(inClass);
+      }, 400);
+    }, 280);
+
+    updateDots(toIdx);
+  }
+
+  function updateDots(activeIdx) {
+    document.querySelectorAll('.wizard-step-dot').forEach(function (dot, i) {
+      dot.classList.remove('active', 'done');
+      if (i < activeIdx) dot.classList.add('done');
+      else if (i === activeIdx) dot.classList.add('active');
+    });
+  }
+
+  /* ── Navigation ── */
+  window.goNext = function (fromStep) {
+    if (!validateStep(fromStep)) return;
+
+    if (fromStep === 3) {
+      buildSummary();
+    }
+
+    currentStep = fromStep + 1;
+    transition(fromStep, currentStep, 'forward');
+  };
+
+  window.goBack = function (fromStep) {
+    currentStep = fromStep - 1;
+    transition(fromStep, currentStep, 'back');
+  };
+
+  /* ── Summary builder ── */
+  function buildSummary() {
+    function set(id, v, fallback) {
+      var el = document.getElementById('s-' + id);
+      if (!el) return;
+      if (v) {
+        el.textContent = v;
+        el.classList.remove('empty');
+      } else {
+        el.textContent = fallback || 'Not set';
+        el.classList.add('empty');
+      }
+    }
+
+    set('username',     val('username'));
+    set('email',        val('email'));
+    set('auth-path',    val('auth-path'));
+    set('web-path',     val('web-path'));
+    set('network-path', val('network-path'));
+    set('notif-email',  val('notif-email'));
+
+    var tgToken = val('tg-token');
+    var tgChat  = val('tg-chat');
+    var tgEl    = document.getElementById('s-telegram');
+    if (tgToken && tgChat) {
+      tgEl.textContent = 'Configured';
+      tgEl.classList.remove('empty');
+    } else if (tgToken || tgChat) {
+      tgEl.textContent = 'Partially set';
+      tgEl.classList.add('empty');
+    } else {
+      tgEl.textContent = 'Not set';
+      tgEl.classList.add('empty');
+    }
+
+    var cw = val('corr-window') || '7200';
+    var sl = val('silence')     || '1800';
+    document.getElementById('s-corr').textContent    = cw + 's';
+    document.getElementById('s-silence').textContent = sl + 's';
+  }
+
+  /* ── Activate ── */
+  window.activate = function () {
+    var btn = document.getElementById('btn-activate');
+    var errEl = document.getElementById('global-error');
+
+    errEl.classList.remove('visible');
+    btn.disabled = true;
+    btn.textContent = 'Activating…';
+
+    var payload = {
+      username: val('username'),
+      password: val('password'),
+      notification_email:                    val('notif-email')    || null,
+      telegram_bot_token:                    val('tg-token')       || null,
+      telegram_chat_id:                      val('tg-chat')        || null,
+      correlation_window_seconds:            parseInt(val('corr-window'), 10) || 7200,
+      incident_silence_threshold_seconds:    parseInt(val('silence'),     10) || 1800,
+    };
+
+    // Attach source paths as extra fields
+    // (backend will need to accept these — extend SetupPayload as needed)
+    payload.auth_log_path    = val('auth-path')    || null;
+    payload.web_log_path     = val('web-path')     || null;
+    payload.network_log_path = val('network-path') || null;
+    payload.admin_email      = val('email')        || null;
+
+    fetch(API_BASE + '/api/setup/complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(payload),
+    })
+    .then(function (r) {
+      return r.json().then(function (data) {
+        if (!r.ok) throw new Error(data.detail || 'Setup failed.');
+        return data;
+      });
+    })
+    .then(function () {
+      // Show success panel
+      var panel4 = document.getElementById('panel-4');
+      var panelS = document.getElementById('panel-success');
+      panel4.classList.add('slide-out-left');
+      setTimeout(function () {
+        panel4.classList.remove('active', 'slide-out-left');
+        panelS.classList.add('active', 'slide-in-right');
+        setTimeout(function () { panelS.classList.remove('slide-in-right'); }, 400);
+        // Hide dots
+        document.getElementById('wizard-steps').style.opacity = '0';
+        // Redirect after 2s
+        setTimeout(function () {
+          window.location.href = '../index.html';
+        }, 2200);
+      }, 280);
+    })
+    .catch(function (err) {
+      btn.disabled = false;
+      btn.textContent = 'Activate NOCTUA';
+      errEl.textContent = err.message || 'Something went wrong. Check your connection and try again.';
+      errEl.classList.add('visible');
+    });
+  };
+
+})();
+</script>
+</body>
+</html>

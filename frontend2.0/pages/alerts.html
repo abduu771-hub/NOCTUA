@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIEM-AI — Alert Queue</title>
+<meta name="description" content="Real-time alert queue with severity filtering, search, and expandable event details.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="../assets/css/design-system.css">
+<style>
+
+  /* ── Page centering ── */
+  .sec {
+    max-width: 1200px;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 40px;
+    padding-right: 40px;
+  }
+  .page-hero {
+    max-width: 1200px;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 40px;
+    padding-right: 40px;
+  }
+
+  /* ── Filter bar ── */
+  .filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: var(--card-shadow);
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  .filter-bar input,
+  .filter-bar select {
+    height: 34px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0 10px;
+    font-family: var(--ff);
+    font-size: 13px;
+    color: var(--text);
+    background: var(--bg);
+    outline: none;
+    transition: border-color .15s;
+  }
+  .filter-bar input:focus,
+  .filter-bar select:focus { border-color: var(--text); }
+  .filter-input-main { flex: 1; min-width: 200px; }
+  .filter-select { width: 150px; }
+  .filter-input-sm { width: 140px; }
+
+  /* ── Table ── */
+  .tbl { width: 100%; border-collapse: collapse; }
+  .tbl thead tr th {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+    background: var(--white);
+  }
+  .tbl tbody td {
+    padding: 14px 16px;
+    border-bottom: 0.5px solid var(--border);
+    vertical-align: middle;
+    font-size: 13px;
+    color: var(--text);
+  }
+
+ 
+
+  /* ── Row typography ── */
+  .tr { cursor: pointer; transition: background 0.12s; }
+  .tr:hover { background: #fafaf9; }
+
+  .inc-t {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1.3;
+  }
+  .inc-s {
+    font-size: 11.5px;
+    font-weight: 400;
+    color: var(--muted);
+    margin-top: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .inc-h {
+    font-size: 12.5px;
+    font-weight: 400;
+    color: var(--text);
+    font-family: var(--ff-mono, monospace);
+  }
+  .inc-u {
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .mono {
+    font-family: var(--ff-mono, 'Fira Code', monospace);
+    font-size: 12px;
+  }
+
+  /* ── Open button — always black ── */
+  .btn-open {
+    display: inline-block;
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #fff;
+    background: #0B0B0B;
+    border: 1px solid #0B0B0B;
+    border-radius: 6px;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+    letter-spacing: 0.02em;
+  }
+  .btn-open:hover {
+    background: #fff;
+    color: #0B0B0B;
+    border-color: #d1d5db;
+  }
+
+  /* ── Expand row ── */
+  .tr-expand { display: none; }
+  .tr-expand.open { display: table-row; }
+  .expand-body { padding: 0; border-top: none !important; }
+  .expand-inner {
+    padding: 20px 24px 22px;
+    background: #fafaf9;
+    border-top: 1px solid var(--divider);
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 24px;
+  }
+  @media (max-width: 900px) { .expand-inner { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 600px) { .expand-inner { grid-template-columns: 1fr; } }
+
+  .expand-section-title {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #991B1B;
+    margin-bottom: 12px;
+    font-family: Georgia, 'Times New Roman', serif;
+  }
+  .expand-kv { display: flex; flex-direction: column; gap: 8px; }
+  .expand-kv-row { display: flex; flex-direction: column; gap: 2px; }
+  .expand-kv-key {
+    font-size: 10px;
+    color: var(--muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-family: Georgia, 'Times New Roman', serif;
+  }
+  .expand-kv-val {
+    font-size: 12.5px;
+    color: var(--text);
+    word-break: break-all;
+    font-family: var(--ff-mono, monospace);
+  }
+  .expand-kv-val.plain {
+    font-family: Georgia, 'Times New Roman', serif;
+    word-break: normal;
+    line-height: 1.7;
+  }
+
+  .mitre-tag {
+    display: inline-block;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 7px;
+    font-size: 11px;
+    color: var(--text);
+    margin: 2px 2px 2px 0;
+    font-family: Georgia, 'Times New Roman', serif;
+  }
+
+  /* ── Pagination ── */
+  .pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 28px 0 8px;
+  }
+  .pag-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 18px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #fff;
+    background: #0B0B0B;
+    border: 1px solid #0B0B0B;
+    border-radius: 6px;
+    cursor: pointer;
+    letter-spacing: 0.03em;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+    font-family: var(--ff);
+  }
+  .pag-btn:hover {
+    background: #fff;
+    color: #0B0B0B;
+    border-color: #d1d5db;
+  }
+  .pag-btn:disabled {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .pag-info {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    font-family: Georgia, 'Times New Roman', serif;
+    min-width: 80px;
+    text-align: center;
+  }
+
+  .tbl-empty-row td { border: none !important; }
+</style>
+</head>
+<body>
+
+<!-- nav injected by JS -->
+
+<div class="page-hero">
+  <div class="page-eye">Alerts</div>
+  <h1 class="page-title">Alert Queue</h1>
+  <p class="page-title-meta" id="hero-meta">Loading…</p>
+</div>
+
+<div class="sec" style="padding-top:0;">
+
+  <div class="filter-bar">
+    <input
+      id="filter-search"
+      class="filter-input-main"
+      type="search"
+      placeholder="Search by rule, host, or user…"
+      autocomplete="off"
+    >
+    <select id="filter-severity" class="filter-select">
+      <option value="">All Severity</option>
+      <option value="critical">Critical</option>
+      <option value="high">High</option>
+      <option value="medium">Medium</option>
+      <option value="low">Low</option>
+    </select>
+    <input
+      id="filter-host"
+      class="filter-input-sm"
+      type="search"
+      placeholder="Filter by host…"
+      autocomplete="off"
+    >
+  </div>
+
+  <div class="sec-hd" style="margin-bottom:12px;">
+    <span class="sec-title">Alerts</span>
+    <span class="sec-meta" id="table-count">—</span>
+  </div>
+
+  <div class="tbl-wrap" id="alerts-table-wrap"></div>
+  <div id="pagination-container"></div>
+
+</div>
+
+<script src="../shared/api.js"></script>
+<script src="../shared/utils.js"></script>
+<script src="../shared/state.js"></script>
+<script src="../shared/components.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var PAGE_SIZE = 20;
+
+  SIEM_COMPONENTS.injectNav('alerts');
+  SIEM_COMPONENTS.injectFooter();
+
+  var allAlerts   = [];
+  var filtered    = [];
+  var currentPage = 1;
+
+  var wrap      = document.getElementById('alerts-table-wrap');
+  var pagCont   = document.getElementById('pagination-container');
+  var heroMeta  = document.getElementById('hero-meta');
+  var tableCount = document.getElementById('table-count');
+  var searchEl  = document.getElementById('filter-search');
+  var sevEl     = document.getElementById('filter-severity');
+  var hostEl    = document.getElementById('filter-host');
+
+  /* ── Feather SVG ── */
+  var FEATHER = '<svg style="display:inline-block;width:12px;height:12px;vertical-align:middle;flex-shrink:0;" viewBox="0 0 13 13" fill="none" xmlns="http://www.w3.org/2000/svg">'
+    + '<path d="M6.5 1C6.5 1 9.5 3 9.5 6.5C9.5 8.5 8 10.5 6.5 12" stroke="currentColor" stroke-width="0.9" stroke-linecap="round"/>'
+    + '<path d="M6.5 1C6.5 1 3.5 3 3.5 6.5C3.5 8.5 5 10.5 6.5 12" stroke="currentColor" stroke-width="0.9" stroke-linecap="round"/>'
+    + '<path d="M6.5 12V4" stroke="currentColor" stroke-width="0.9" stroke-linecap="round"/>'
+    + '<path d="M5 5.5L6.5 4.5L8 5.5" stroke="currentColor" stroke-width="0.75" stroke-linecap="round" stroke-linejoin="round"/>'
+    + '<path d="M4.5 7.5L6.5 6.5L8.5 7.5" stroke="currentColor" stroke-width="0.75" stroke-linecap="round" stroke-linejoin="round"/>'
+    + '</svg>';
+
+  /* ── Boot ── */
+  function init() {
+    SIEM_COMPONENTS.showLoading(wrap, 8);
+    SIEM_API.getAlerts().then(function (data) {
+      allAlerts = Array.isArray(data) ? data : [];
+      heroMeta.textContent = allAlerts.length + ' alert' + (allAlerts.length !== 1 ? 's' : '') + ' in queue';
+      applyFilters();
+    }).catch(function (err) {
+      SIEM_COMPONENTS.showError(wrap, 'Failed to load alerts. ' + (err.message || ''));
+      heroMeta.textContent = 'Error loading data';
+    });
+  }
+
+  /* ── Filter ── */
+  function applyFilters() {
+    var q    = (searchEl.value || '').toLowerCase().trim();
+    var sev  = (sevEl.value   || '').toLowerCase().trim();
+    var host = (hostEl.value  || '').toLowerCase().trim();
+
+    filtered = allAlerts.filter(function (a) {
+      var rule  = ((a.rule && a.rule.name) || '').toLowerCase();
+      var hname = ((a.host && a.host.name) || '').toLowerCase();
+      var uname = ((a.user && a.user.name) || '').toLowerCase();
+      var asev  = ((a.rule && a.rule.severity) || a.severity || '').toLowerCase();
+
+      if (sev  && asev !== sev)                                          return false;
+      if (host && !hname.includes(host))                                 return false;
+      if (q    && !rule.includes(q) && !hname.includes(q)
+                && !uname.includes(q))                                   return false;
+      return true;
+    });
+
+    currentPage = 1;
+    renderTable();
+  }
+
+  /* ── Render table ── */
+  function renderTable() {
+    var totalPages = Math.ceil(filtered.length / PAGE_SIZE) || 1;
+    if (currentPage > totalPages) currentPage = totalPages;
+
+    tableCount.textContent = filtered.length + ' shown';
+
+    if (filtered.length === 0) {
+      SIEM_COMPONENTS.showEmpty(wrap, 'No alerts match your filters', 'Try adjusting the severity or search term.');
+      pagCont.innerHTML = '';
+      return;
+    }
+
+    var start = (currentPage - 1) * PAGE_SIZE;
+    var page  = filtered.slice(start, start + PAGE_SIZE);
+
+    var table = document.createElement('table');
+    table.className = 'tbl';
+    table.innerHTML =
+      '<thead><tr>' +
+        '<th style="width:90px;">Severity</th>' +
+        '<th>Rule</th>' +
+        '<th>Host</th>' +
+        '<th>User</th>' +
+        '<th>Source IP</th>' +
+        '<th>Time</th>' +
+        '<th style="text-align:right;"></th>' +
+      '</tr></thead>';
+
+    var tbody = document.createElement('tbody');
+
+    page.forEach(function (a) {
+      var sev     = ((a.rule && a.rule.severity) || a.severity || 'unknown').toLowerCase();
+      var ruleTxt = SIEM_UTILS.truncate((a.rule && a.rule.name) || 'Unknown rule', 60);
+      var action  = SIEM_UTILS.humanize((a.event && a.event.action) || '');
+      var hname   = (a.host && a.host.name) || '—';
+      var uname   = (a.user && a.user.name) || '—';
+      var srcip   = (a.source && a.source.ip) || '—';
+      var ts      = a['@timestamp'] ? SIEM_UTILS.timeAgo(a['@timestamp']) : '—';
+      var alertId = a._id || a.alert_id || '';
+      var detailUrl = SIEM_UTILS.alertUrl
+        ? SIEM_UTILS.alertUrl(alertId)
+        : ('../pages/alert.html?id=' + encodeURIComponent(alertId));
+
+      var dataRow = document.createElement('tr');
+      dataRow.className = 'tr';
+
+      dataRow.innerHTML =
+          '<td>' + SIEM_UTILS.severityBadge(sev) + '</td>' +        '<td>' +
+          '<div class="inc-t">' + SIEM_UTILS.esc(ruleTxt) + '</div>' +
+          (action ? '<div class="inc-s">' + SIEM_UTILS.esc(action) + '</div>' : '') +
+        '</td>' +
+        '<td><span class="inc-h">' + SIEM_UTILS.esc(hname) + '</span></td>' +
+        '<td><span class="inc-u">' + SIEM_UTILS.esc(uname) + '</span></td>' +
+        '<td><span class="inc-u mono">' + SIEM_UTILS.esc(srcip) + '</span></td>' +
+        '<td><span class="inc-u">' + SIEM_UTILS.esc(ts) + '</span></td>' +
+        '<td style="text-align:right;">' +
+          '<a class="btn-open" href="' + SIEM_UTILS.esc(detailUrl) + '" data-open="true">Open →</a>' +
+        '</td>';
+
+      var expandRow  = document.createElement('tr');
+      expandRow.className = 'tr-expand';
+      var expandCell = document.createElement('td');
+      expandCell.className = 'expand-body';
+      expandCell.colSpan = 7;
+      expandCell.style.padding = '0';
+      expandCell.appendChild(buildExpandInner(a));
+      expandRow.appendChild(expandCell);
+
+      dataRow.addEventListener('click', function (e) {
+        if (e.target.closest('[data-open]')) return;
+        expandRow.classList.toggle('open');
+        dataRow.classList.toggle('tr-expanded');
+      });
+
+      tbody.appendChild(dataRow);
+      tbody.appendChild(expandRow);
+    });
+
+    table.appendChild(tbody);
+    wrap.innerHTML = '';
+    wrap.appendChild(table);
+
+    renderPagination(totalPages);
+  }
+
+  /* ── Pagination ── */
+  function renderPagination(totalPages) {
+    pagCont.innerHTML = '';
+    if (totalPages <= 1) return;
+
+    var div = document.createElement('div');
+    div.className = 'pagination';
+
+    var prevBtn = document.createElement('button');
+    prevBtn.className = 'pag-btn';
+    prevBtn.innerHTML = FEATHER + '&nbsp;Previous';
+    if (currentPage <= 1) prevBtn.disabled = true;
+    prevBtn.addEventListener('click', function () {
+      if (currentPage > 1) {
+        currentPage--;
+        renderTable();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    });
+
+    var info = document.createElement('div');
+    info.className = 'pag-info';
+    info.textContent = currentPage + ' of ' + totalPages;
+
+    var nextBtn = document.createElement('button');
+    nextBtn.className = 'pag-btn';
+    nextBtn.innerHTML = 'Next&nbsp;' + FEATHER;
+    if (currentPage >= totalPages) nextBtn.disabled = true;
+    nextBtn.addEventListener('click', function () {
+      if (currentPage < totalPages) {
+        currentPage++;
+        renderTable();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    });
+
+    div.appendChild(prevBtn);
+    div.appendChild(info);
+    div.appendChild(nextBtn);
+    pagCont.appendChild(div);
+  }
+
+  /* ── Expand inner ── */
+  function buildExpandInner(a) {
+    var inner = document.createElement('div');
+    inner.className = 'expand-inner';
+
+    /* Evidence section */
+    var evidence = a.evidence || {};
+    var evKeys   = Object.keys(evidence);
+    if (evKeys.length) {
+      var sec = document.createElement('div');
+      sec.innerHTML = '<div class="expand-section-title">Evidence</div>';
+      var kv = document.createElement('div');
+      kv.className = 'expand-kv';
+      evKeys.forEach(function (k) {
+        var val = evidence[k];
+        if (val === null || val === undefined || val === '') return;
+        var row = document.createElement('div');
+        row.className = 'expand-kv-row';
+        row.innerHTML =
+          '<span class="expand-kv-key">' + SIEM_UTILS.esc(SIEM_UTILS.humanize(k)) + '</span>' +
+          '<span class="expand-kv-val">' + SIEM_UTILS.esc(String(val)) + '</span>';
+        kv.appendChild(row);
+      });
+      sec.appendChild(kv);
+      inner.appendChild(sec);
+    }
+
+    /* Event details section */
+    var hasEvent = a.event || a['@timestamp'] || a.agent;
+    if (hasEvent) {
+      var sec2 = document.createElement('div');
+      sec2.innerHTML = '<div class="expand-section-title">Event Details</div>';
+      var kv2 = document.createElement('div');
+      kv2.className = 'expand-kv';
+
+      function addRow(label, val) {
+        if (!val || val === '—') return;
+        var r = document.createElement('div');
+        r.className = 'expand-kv-row';
+        r.innerHTML =
+          '<span class="expand-kv-key">' + SIEM_UTILS.esc(label) + '</span>' +
+          '<span class="expand-kv-val">' + SIEM_UTILS.esc(String(val)) + '</span>';
+        kv2.appendChild(r);
+      }
+
+      addRow('Timestamp',  a['@timestamp'] ? SIEM_UTILS.formatDate(a['@timestamp']) : null);
+      addRow('Action',     (a.event && a.event.action) ? SIEM_UTILS.humanize(a.event.action) : null);
+      addRow('Category',   (a.event && a.event.category) ? SIEM_UTILS.humanize(a.event.category) : null);
+      addRow('Agent',      (a.agent && a.agent.name) ? a.agent.name : null);
+      addRow('Agent Type', (a.agent && a.agent.type) ? a.agent.type : null);
+
+      sec2.appendChild(kv2);
+      inner.appendChild(sec2);
+    }
+
+    /* MITRE section */
+    var mitre      = a.mitre || {};
+    var techniques = mitre.technique  || mitre.techniques  || [];
+    var tactics    = mitre.tactic     || mitre.tactics     || [];
+    var hasMitre   = (Array.isArray(techniques) && techniques.length)
+                  || (Array.isArray(tactics)    && tactics.length);
+
+    if (hasMitre) {
+      var sec3 = document.createElement('div');
+      sec3.innerHTML = '<div class="expand-section-title">MITRE ATT&amp;CK</div>';
+
+      if (Array.isArray(tactics) && tactics.length) {
+        var tacLabel = document.createElement('div');
+        tacLabel.className = 'expand-kv-key';
+        tacLabel.style.marginBottom = '4px';
+        tacLabel.textContent = 'Tactics';
+        sec3.appendChild(tacLabel);
+        var tacWrap = document.createElement('div');
+        tacWrap.style.marginBottom = '10px';
+        tactics.forEach(function (t) {
+          var tag = document.createElement('span');
+          tag.className = 'mitre-tag';
+          tag.textContent = SIEM_UTILS.capitalize ? SIEM_UTILS.capitalize(t) : t;
+          tacWrap.appendChild(tag);
+        });
+        sec3.appendChild(tacWrap);
+      }
+
+      if (Array.isArray(techniques) && techniques.length) {
+        var techLabel = document.createElement('div');
+        techLabel.className = 'expand-kv-key';
+        techLabel.style.marginBottom = '4px';
+        techLabel.textContent = 'Techniques';
+        sec3.appendChild(techLabel);
+        var techWrap = document.createElement('div');
+        techniques.forEach(function (t) {
+          var tag = document.createElement('span');
+          tag.className = 'mitre-tag';
+          tag.textContent = t;
+          techWrap.appendChild(tag);
+        });
+        sec3.appendChild(techWrap);
+      }
+
+      inner.appendChild(sec3);
+    }
+
+    /* Fallback */
+    if (inner.children.length === 0) {
+      var fallback = document.createElement('div');
+      fallback.style.cssText = 'color:var(--muted);font-size:13px;padding:4px 0;font-family:Georgia,serif;';
+      fallback.textContent = 'No additional details available for this alert.';
+      inner.appendChild(fallback);
+    }
+
+    return inner;
+  }
+
+  /* ── Debounce ── */
+  var debounceTimer;
+  searchEl.addEventListener('input', function () {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(applyFilters, 200);
+  });
+  sevEl.addEventListener('change', applyFilters);
+  hostEl.addEventListener('input', function () {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(applyFilters, 200);
+  });
+
+  init();
+})();
+</script>
+</body>
+</html>

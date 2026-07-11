@@ -15,15 +15,18 @@ MUST NOT insert "N/A" values.
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import os
 from datetime import datetime, timezone
+from typing import Optional
 
 from elasticsearch import Elasticsearch
 
 from . import config
 from .alert_validator import validate_alert
+from .lifecycle_contract import ALERT_STATUS_OPEN
 
 log = logging.getLogger("detection_engine.alert_writer")
 
@@ -50,16 +53,31 @@ class AlertWriter:
         date_str = datetime.now(timezone.utc).strftime("%Y.%m.%d")
         return f"{self._index_prefix}-{date_str}"
 
-    def write(self, alert: dict) -> bool:
-        """
-        Validate and write one alert to ES.
+    def write(self, alert: dict) -> Optional[str]:
+        # 1. Deep copy — prevent any nested mutation of caller's object
+        alert = copy.deepcopy(alert)
 
-        Returns True on successful ES write.
-        Returns False if validation fails or ES write fails.
-        Invalid alerts go to logs/invalid_alerts.jsonl (via validator).
-        ES write failures go to logs/alerts_buffer.jsonl.
-        """
-        # ── Validate before sending to ES ─────────────────────────────
+        # 2. Lifecycle field enforcement — alert_writer is the ONLY creator.
+        # Status is always OPEN at creation. Only the admin API can change it later.
+        # If status is missing or wrong, we correct it here before validation.
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        if alert.get("status") != ALERT_STATUS_OPEN:
+            alert["status"] = ALERT_STATUS_OPEN
+
+        if not alert.get("opened_at"):
+            alert["opened_at"] = now_iso
+
+        if not alert.get("last_status_change"):
+            alert["last_status_change"] = now_iso
+
+        # Ensure closed fields are null on creation — they are admin-only
+        alert["closed_at"] = None
+        alert["closed_by"] = None
+        alert["reopened_at"] = None
+        alert["reopened_by"] = None
+
+        # 3. Schema validation via alert_validator
         is_valid, error = validate_alert(alert)
         if not is_valid:
             log.warning(
@@ -67,21 +85,26 @@ class AlertWriter:
                 error,
                 alert.get("rule", {}).get("id", "unknown"),
             )
-            return False
+            return None
 
-        # ── Write to ES ───────────────────────────────────────────────
+        # 4. Write to Elasticsearch
         try:
-            self.es.index(index=self._index_name(), body=alert)
+            result = self.es.index(
+                index=self._index_name(),
+                body=alert,
+                refresh="wait_for",
+            )
             log.info(
                 "Alert indexed: [%s] %s",
                 alert.get("rule", {}).get("severity", "?"),
                 alert.get("rule", {}).get("id", "?"),
             )
-            return True
+            # 5. Return ES _id on success
+            return result["_id"]
         except Exception as exc:
             log.error("ES alert write failed: %s — buffering to disk", exc)
             self._buffer_to_disk(alert)
-            return False
+            return None
 
     def flush_buffer(self) -> None:
         """
@@ -105,10 +128,15 @@ class AlertWriter:
             for line in lines:
                 try:
                     alert = json.loads(line.strip())
-                    self.es.index(index=self._index_name(), body=alert)
+                    self.es.index(
+                        index=self._index_name(),
+                        body=alert,
+                        refresh="wait_for",
+                    )
                     resent += 1
-                except Exception:
-                    break  # ES still down
+                except Exception as exc:
+                    log.error("Buffer flush failed for alert: %s", exc)
+                    continue
 
             if resent == len(lines):
                 open(self._buffer_path, "w").close()
@@ -116,7 +144,11 @@ class AlertWriter:
             elif resent > 0:
                 with open(self._buffer_path, "w") as f:
                     f.writelines(lines[resent:])
-                log.info("Partially flushed %d/%d buffered alerts", resent, len(lines))
+                log.info(
+                    "Partially flushed %d/%d buffered alerts",
+                    resent,
+                    len(lines),
+                )
         except Exception as exc:
             log.error("Buffer flush error: %s", exc)
 

@@ -38,8 +38,11 @@ from .models import event_from_es_hit
 from .rule_engine import RuleEngine
 from .rules import ALL_RULES
 from .state import StateManager
-
+from .ai_alert_analyzer import AIAlertAnalyzer
 # ── Logging setup ─────────────────────────────────────────────────────────────
+# Réduire les logs Elasticsearch
+logging.getLogger("elastic_transport.transport").setLevel(logging.WARNING)
+logging.getLogger("elasticsearch").setLevel(logging.WARNING)
 
 os.makedirs(config.LOG_DIR, exist_ok=True)
 
@@ -81,6 +84,7 @@ def main() -> None:
     es_reader = ESReader(es)
     alert_writer = AlertWriter(es)
     incident_engine = IncidentEngine(es)
+    alert_ai = AIAlertAnalyzer(es)
     state_manager = StateManager()
     rule_engine = RuleEngine()
 
@@ -142,8 +146,14 @@ def main() -> None:
                 alerts = rule_engine.process_event(event)
 
                 for alert in alerts:
-                    if alert_writer.write(alert):
+                    alert_doc_id = alert_writer.write(alert)
+                    if alert_doc_id:
                         cycle_alerts += 1
+                        alert_ai.analyze_and_update(
+                            index=alert_writer._index_name(),
+                            doc_id=alert_doc_id,
+                            alert_doc=alert,
+                        )
                         incident_engine.process_alert(alert)
 
                 # ── 3d. Advance checkpoint ────────────────────────────
@@ -152,7 +162,7 @@ def main() -> None:
 
             # ── 4. Post-cycle maintenance ─────────────────────────────
             rule_engine.cleanup()
-            incident_engine._auto_close_incidents()
+            incident_engine.run_auto_close_cycle()
 
             # ── 5. Persist state ──────────────────────────────────────
             if cycle_events > 0 or cycle_alerts > 0:

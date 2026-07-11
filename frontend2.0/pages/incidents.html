@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIEM-AI — Incidents</title>
+<meta name="description" content="Incident queue with severity and status filtering, search, and expandable investigation details.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="../assets/css/design-system.css">
+<style>
+  /* ── Page centering ─────────────────────────────────────────── */
+  .sec {
+    max-width: 1200px;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 40px;
+    padding-right: 40px;
+  }
+
+  /* ── Filter bar ─────────────────────────────────────────────── */
+  .filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 16px;
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: var(--card-shadow);
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  .filter-bar input,
+  .filter-bar select {
+    height: 34px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0 10px;
+    font-family: var(--ff);
+    font-size: 13px;
+    color: var(--text);
+    background: var(--bg);
+    outline: none;
+    transition: border-color .15s;
+  }
+  .filter-bar input:focus,
+  .filter-bar select:focus {
+    border-color: var(--text);
+  }
+  .filter-input-main { flex: 1; min-width: 200px; }
+  .filter-select     { width: 150px; }
+  .filter-input-sm   { width: 140px; }
+
+  /* ── Table extras ───────────────────────────────────────────── */
+  .tbl {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .tbl th {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+  }
+  .tbl td {
+    padding: 14px 14px;
+    border-bottom: 1px solid var(--divider, #f0f0ee);
+    vertical-align: middle;
+  }
+
+  .tr { cursor: pointer; }
+  .tr:hover { background: #fafaf9; }
+
+  /* Expand row — hidden by default */
+  .tr-expand { display: none; }
+  .tr-expand.open { display: table-row; }
+
+  .expand-body {
+    padding: 0;
+    border-top: none !important;
+  }
+  .expand-inner {
+    padding: 16px 20px 18px;
+    background: #fafaf9;
+    border-top: 1px solid var(--divider);
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 20px;
+  }
+  @media (max-width: 900px) {
+    .expand-inner { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 600px) {
+    .expand-inner { grid-template-columns: 1fr; }
+  }
+
+  .expand-section-title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+  .expand-kv { display: flex; flex-direction: column; gap: 6px; }
+  .expand-kv-row { display: flex; flex-direction: column; }
+  .expand-kv-key {
+    font-size: 11px;
+    color: var(--muted);
+    font-weight: 500;
+    text-transform: capitalize;
+  }
+  .expand-kv-val {
+    font-size: 12.5px;
+    color: var(--text);
+    word-break: break-all;
+    font-family: var(--ff-mono, monospace);
+  }
+  .expand-kv-val.plain { font-family: var(--ff); word-break: normal; }
+
+  .tag-pill {
+    display: inline-block;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 7px;
+    font-size: 11px;
+    color: var(--text);
+    margin: 2px 2px 2px 0;
+  }
+
+  /* ── Open button — primary action ──────────────────────────── */
+  .btn-open {
+    display: inline-block;
+    padding: 5px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #ffffff;
+    background: #0B0B0B;
+    border: 1px solid #0B0B0B;
+    border-radius: 6px;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: background 180ms ease, color 180ms ease, border-color 180ms ease;
+  }
+  .btn-open:hover {
+    background: #ffffff;
+    color: #0B0B0B;
+    border-color: #d1d1d1;
+  }
+
+  
+  /* ── Typography in table ────────────────────────────────────── */
+  .inc-t {
+    font-weight: 550;
+    font-size: 13.5px;
+    color: var(--text);
+    line-height: 1.3;
+  }
+  .inc-s {
+    font-size: 11.5px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+  .inc-h {
+    font-size: 12.5px;
+    color: var(--text);
+  }
+  .inc-u {
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  /* ── Mono ───────────────────────────────────────────────────── */
+  .mono { font-family: var(--ff-mono, 'Fira Code', monospace); font-size: 12px; }
+
+  /* ── Empty / error states ───────────────────────────────────── */
+  .tbl-empty-row td { border: none !important; }
+
+  /* ── Pagination ─────────────────────────────────────────────── */
+  .pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    margin-top: 24px;
+    margin-bottom: 8px;
+  }
+  .pagination-btn {
+    display: inline-block;
+    padding: 6px 18px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: border-color 160ms ease, background 160ms ease;
+    font-family: var(--ff);
+    user-select: none;
+  }
+  .pagination-btn:hover {
+    border-color: var(--text);
+    background: var(--bg);
+  }
+  .pagination-btn.hidden {
+    visibility: hidden;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+
+<!-- nav injected by JS -->
+
+<div class="page-hero">
+  <div class="page-eye">Investigations</div>
+  <h1 class="page-title">Incidents</h1>
+  <p class="page-title-meta" id="hero-meta">Loading…</p>
+</div>
+
+<div class="sec" style="padding-top: 0;">
+
+  <!-- Filter bar -->
+  <div class="filter-bar">
+    <input
+      id="filter-search"
+      class="filter-input-main"
+      type="search"
+      placeholder="Search by name, type, or host…"
+      autocomplete="off"
+    >
+    <select id="filter-severity" class="filter-select">
+      <option value="">All Severity</option>
+      <option value="critical">Critical</option>
+      <option value="high">High</option>
+      <option value="medium">Medium</option>
+      <option value="low">Low</option>
+    </select>
+    <select id="filter-status" class="filter-select">
+      <option value="">All Status</option>
+      <option value="open">Open</option>
+      <option value="closed">Closed</option>
+      <option value="stale">Stale</option>
+      <option value="active">Active</option>
+    </select>
+  </div>
+
+  <!-- Incidents table -->
+  <div class="sec-hd" style="margin-bottom:12px;">
+    <span class="sec-title">Incidents</span>
+    <span class="sec-meta" id="table-count">—</span>
+  </div>
+
+  <div class="tbl-wrap" id="incidents-table-wrap"></div>
+
+  <!-- Pagination -->
+  <div class="pagination" id="pagination-bar" style="display:none;">
+    <button class="pagination-btn" id="page-prev">← Previous</button>
+    <button class="pagination-btn" id="page-next">Next →</button>
+  </div>
+
+</div>
+
+<script src="../shared/api.js"></script>
+<script src="../shared/utils.js"></script>
+<script src="../shared/state.js"></script>
+<script src="../shared/components.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var PAGE_SIZE = 20;
+
+  SIEM_COMPONENTS.injectNav('incidents');
+  SIEM_COMPONENTS.injectFooter();
+
+  var allIncidents = [];
+  var filtered     = [];
+  var currentPage  = 1;
+
+  var wrap        = document.getElementById('incidents-table-wrap');
+  var heroMeta    = document.getElementById('hero-meta');
+  var tableCount  = document.getElementById('table-count');
+  var searchEl    = document.getElementById('filter-search');
+  var sevEl       = document.getElementById('filter-severity');
+  var statusEl    = document.getElementById('filter-status');
+  var paginationBar = document.getElementById('pagination-bar');
+  var prevBtn     = document.getElementById('page-prev');
+  var nextBtn     = document.getElementById('page-next');
+
+  /* ── Name resolution ────────────────────────────────────────── */
+  function resolveIncidentName(inc) {
+    if (!inc) return 'Unnamed incident';
+    return inc.name
+      || inc.incident_name
+      || (inc.type ? SIEM_UTILS.humanize(inc.type) : null)
+      || (inc.incident_type ? SIEM_UTILS.humanize(inc.incident_type) : null)
+      || 'Unnamed incident';
+  }
+
+  function resolveHost(hostField) {
+    if (!hostField) return '—';
+    return SIEM_UTILS.hostDisplay(hostField) || '—';
+  }
+
+  function resolveSourceIp(doc) {
+    var ctx = doc.attack_context || {};
+    var ips = ctx.source_ips;
+    if (Array.isArray(ips) && ips.length) return ips[0];
+    var src = doc.source || {};
+    if (src.ip) return src.ip;
+    return '—';
+  }
+
+  /* ── Boot ───────────────────────────────────────────────────── */
+  function init() {
+    SIEM_COMPONENTS.showLoading(wrap, 8);
+
+    SIEM_API.getIncidents().then(function (data) {
+      allIncidents = Array.isArray(data) ? data : [];
+      heroMeta.textContent =
+        allIncidents.length + ' incident' + (allIncidents.length !== 1 ? 's' : '') + ' loaded';
+      applyFilters();
+    }).catch(function (err) {
+      SIEM_COMPONENTS.showError(wrap, 'Failed to load incidents. ' + (err.message || ''));
+      heroMeta.textContent = 'Error loading data';
+    });
+  }
+
+  /* ── Filter ─────────────────────────────────────────────────── */
+  function applyFilters() {
+    var q      = (searchEl.value  || '').toLowerCase().trim();
+    var sev    = (sevEl.value     || '').toLowerCase().trim();
+    var status = (statusEl.value  || '').toLowerCase().trim();
+
+    filtered = allIncidents.filter(function (doc) {
+      var inc   = doc.incident || {};
+      var ctx   = doc.attack_context || {};
+      var name  = resolveIncidentName(inc).toLowerCase();
+      var itype = (inc.type || inc.incident_type || '').toLowerCase();
+      var hname = resolveHost(doc.host).toLowerCase();
+      var isev  = (inc.severity || '').toLowerCase();
+      var istat = (inc.status   || '').toLowerCase();
+      var users = (ctx.users_seen || []).join(' ').toLowerCase();
+
+      if (sev    && isev !== sev)                                       return false;
+      if (status && istat !== status)                                   return false;
+      if (q && !name.includes(q) && !itype.includes(q)
+             && !hname.includes(q) && !users.includes(q))               return false;
+      return true;
+    });
+
+    currentPage = 1;
+    renderTable();
+  }
+
+  /* ── Build table ────────────────────────────────────────────── */
+  function renderTable() {
+    var totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+    if (currentPage > totalPages && totalPages > 0) currentPage = totalPages;
+
+    tableCount.textContent = filtered.length + ' shown';
+
+    if (filtered.length === 0) {
+      SIEM_COMPONENTS.showEmpty(
+        wrap,
+        'No incidents match your filters',
+        'Try adjusting the severity, status, or search term.'
+      );
+      paginationBar.style.display = 'none';
+      return;
+    }
+
+    /* Slice for current page */
+    var start   = (currentPage - 1) * PAGE_SIZE;
+    var pageData = filtered.slice(start, start + PAGE_SIZE);
+
+    var table = document.createElement('table');
+    table.className = 'tbl';
+    table.innerHTML =
+      '<thead><tr>' +
+        '<th style="width:90px;">Severity</th>' +
+        '<th>Incident</th>' +
+        '<th>Host</th>' +
+        '<th>Source IP</th>' +
+        '<th>Status</th>' +
+        '<th>Last Seen</th>' +
+        '<th></th>' +
+      '</tr></thead>';
+
+    var tbody = document.createElement('tbody');
+
+    pageData.forEach(function (doc, idx) {
+      var inc  = doc.incident       || {};
+      var ctx  = doc.attack_context || {};
+
+      var sev      = (inc.severity || 'unknown').toLowerCase();
+      var name     = resolveIncidentName(inc);
+      var itype    = inc.incident_type ? SIEM_UTILS.humanize(inc.incident_type) : '';
+      var hname    = resolveHost(doc.host);
+      var srcip    = resolveSourceIp(doc);
+      var status   = inc.status || 'unknown';
+      var lastSeen = SIEM_UTILS.timeAgo(doc.updated_at || inc.last_seen);
+      var incId    = inc.id || doc._id || '';
+      var detailUrl = 'incident.html?id=' + encodeURIComponent(incId);
+
+      /* Main row */
+      var dataRow = document.createElement('tr');
+      dataRow.className = 'tr';
+      dataRow.dataset.idx = idx;
+
+      /* Severity block */
+      var sevClass = 'sev-block sev-' + sev;
+      var sevLabel = sev.charAt(0).toUpperCase() + sev.slice(1);
+
+      dataRow.innerHTML =
+        '<td>' + SIEM_UTILS.severityBadge(sev) + '</td>' +
+        '<td>' +
+          '<div class="inc-t">' + SIEM_UTILS.esc(SIEM_UTILS.truncate(name, 60)) + '</div>' +
+          (itype ? '<div class="inc-s">' + SIEM_UTILS.esc(itype) + '</div>' : '') +
+        '</td>' +
+        '<td><span class="inc-h">' + SIEM_UTILS.esc(hname) + '</span></td>' +
+        '<td><span class="inc-u mono">' + SIEM_UTILS.esc(srcip) + '</span></td>' +
+        '<td>' + SIEM_UTILS.statusPill(status) + '</td>' +
+        '<td><span class="inc-u">' + SIEM_UTILS.esc(lastSeen) + '</span></td>' +
+        '<td style="text-align:right;">' +
+          '<a class="btn-open" href="' + SIEM_UTILS.esc(detailUrl) + '" ' +
+             'data-open="true">Open →</a>' +
+        '</td>';
+
+      /* Expand row */
+      var expandRow  = document.createElement('tr');
+      expandRow.className = 'tr-expand';
+
+      var expandCell = document.createElement('td');
+      expandCell.className = 'expand-body';
+      expandCell.colSpan = 7;
+      expandCell.style.padding = '0';
+      expandCell.appendChild(buildExpandInner(doc));
+      expandRow.appendChild(expandCell);
+
+      dataRow.addEventListener('click', function (e) {
+        if (e.target.closest('[data-open]')) return;
+        var isOpen = expandRow.classList.contains('open');
+        expandRow.classList.toggle('open', !isOpen);
+        dataRow.classList.toggle('tr-expanded', !isOpen);
+      });
+
+      tbody.appendChild(dataRow);
+      tbody.appendChild(expandRow);
+    });
+
+    table.appendChild(tbody);
+    wrap.innerHTML = '';
+    wrap.appendChild(table);
+
+    /* Pagination controls */
+    if (totalPages <= 1) {
+      paginationBar.style.display = 'none';
+    } else {
+      paginationBar.style.display = 'flex';
+      prevBtn.classList.toggle('hidden', currentPage <= 1);
+      nextBtn.classList.toggle('hidden', currentPage >= totalPages);
+    }
+  }
+
+  /* ── Expand inner ───────────────────────────────────────────── */
+  function buildExpandInner(doc) {
+    var inner = document.createElement('div');
+    inner.className = 'expand-inner';
+
+    var inc = doc.incident       || {};
+    var ctx = doc.attack_context || {};
+
+    /* Section 1 */
+    var sec1 = document.createElement('div');
+    sec1.innerHTML = '<div class="expand-section-title">Incident Details</div>';
+    var kv1 = document.createElement('div');
+    kv1.className = 'expand-kv';
+
+    var details = [
+      { key: 'Incident ID',  val: inc.id || doc._id || '—' },
+      { key: 'Type',         val: inc.incident_type ? SIEM_UTILS.humanize(inc.incident_type) : '—' },
+      { key: 'First Seen',   val: SIEM_UTILS.formatDate(doc.created_at || inc.first_seen) },
+      { key: 'Last Updated', val: SIEM_UTILS.formatDate(doc.updated_at || inc.last_seen) },
+    ];
+    if (inc.description) details.push({ key: 'Description', val: inc.description, plain: true });
+
+    details.forEach(function (d) {
+      if (!d.val || d.val === '—') return;
+      var row = document.createElement('div');
+      row.className = 'expand-kv-row';
+      row.innerHTML =
+        '<span class="expand-kv-key">' + SIEM_UTILS.esc(d.key) + '</span>' +
+        '<span class="expand-kv-val' + (d.plain ? ' plain' : '') + '">' + SIEM_UTILS.esc(String(d.val)) + '</span>';
+      kv1.appendChild(row);
+    });
+    sec1.appendChild(kv1);
+    inner.appendChild(sec1);
+
+    /* Section 2 */
+    var users = ctx.users_seen || [];
+    var ips   = ctx.source_ips || [];
+    var techs = ctx.techniques || [];
+    var hosts = SIEM_UTILS.hostsArray ? SIEM_UTILS.hostsArray(doc.host) : [];
+    var hasCtx = users.length || ips.length || techs.length || hosts.length;
+
+    if (hasCtx) {
+      var sec2 = document.createElement('div');
+      sec2.innerHTML = '<div class="expand-section-title">Attack Context</div>';
+      var kv2 = document.createElement('div');
+      kv2.className = 'expand-kv';
+
+      function addTagList(label, items) {
+        if (!items || !items.length) return;
+        var row = document.createElement('div');
+        row.className = 'expand-kv-row';
+        var keyEl = document.createElement('span');
+        keyEl.className = 'expand-kv-key';
+        keyEl.textContent = label;
+        row.appendChild(keyEl);
+        var tagWrap = document.createElement('div');
+        tagWrap.style.marginTop = '4px';
+        items.forEach(function (item) {
+          var tag = document.createElement('span');
+          tag.className = 'tag-pill';
+          tag.textContent = item;
+          tagWrap.appendChild(tag);
+        });
+        row.appendChild(tagWrap);
+        kv2.appendChild(row);
+      }
+
+      function addSimple(label, val) {
+        if (!val) return;
+        var row = document.createElement('div');
+        row.className = 'expand-kv-row';
+        row.innerHTML =
+          '<span class="expand-kv-key">' + SIEM_UTILS.esc(label) + '</span>' +
+          '<span class="expand-kv-val">' + SIEM_UTILS.esc(String(val)) + '</span>';
+        kv2.appendChild(row);
+      }
+
+      if (hosts.length > 1) addTagList('Hosts Affected', hosts);
+      addTagList('Users Seen', users);
+      addTagList('Source IPs', ips.slice(0, 5));
+      addTagList('Techniques', techs);
+
+      var relRules = (doc.related || {}).rule_ids || [];
+      if (relRules.length) addSimple('Correlated Rules', relRules.length + ' rule' + (relRules.length !== 1 ? 's' : ''));
+
+      sec2.appendChild(kv2);
+      inner.appendChild(sec2);
+    }
+
+    /* Section 3 — AI summary */
+    var aiSummary =
+      (doc.ai_analysis && doc.ai_analysis.summary && doc.ai_analysis.summary !== 'not available'
+        ? doc.ai_analysis.summary : null)
+      || doc.ai_summary
+      || inc.ai_summary;
+
+    if (aiSummary) {
+      var sec3 = document.createElement('div');
+      sec3.innerHTML = '<div class="expand-section-title">AI Summary</div>';
+      var bodyEl = document.createElement('div');
+      bodyEl.className = 'expand-kv-val plain';
+      bodyEl.style.lineHeight = '1.7';
+      bodyEl.style.fontFamily = 'var(--ff)';
+      bodyEl.style.fontSize = '12.5px';
+      bodyEl.style.color = 'var(--muted)';
+      bodyEl.textContent = aiSummary;
+      sec3.appendChild(bodyEl);
+      inner.appendChild(sec3);
+    }
+
+    if (inner.children.length === 0) {
+      var fallback = document.createElement('div');
+      fallback.style.cssText = 'color:var(--muted);font-size:13px;padding:4px 0;';
+      fallback.textContent = 'No additional details available for this incident.';
+      inner.appendChild(fallback);
+    }
+
+    return inner;
+  }
+
+  /* ── Pagination events ──────────────────────────────────────── */
+  prevBtn.addEventListener('click', function () {
+    if (currentPage > 1) {
+      currentPage--;
+      renderTable();
+      wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  });
+
+  nextBtn.addEventListener('click', function () {
+    var totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+    if (currentPage < totalPages) {
+      currentPage++;
+      renderTable();
+      wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  });
+
+  /* ── Filter events (debounced) ──────────────────────────────── */
+  var debounceTimer;
+  function debounce(fn, ms) {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(fn, ms);
+  }
+
+  searchEl.addEventListener('input', function () { debounce(applyFilters, 200); });
+  sevEl.addEventListener('change', applyFilters);
+  statusEl.addEventListener('change', applyFilters);
+
+  init();
+})();
+</script>
+</body>
+</html>

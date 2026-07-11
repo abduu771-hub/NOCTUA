@@ -1,0 +1,1137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIEM-AI — Incident Detail</title>
+<link rel="stylesheet" href="../assets/css/design-system.css">
+<style>
+  /* ── Feather glyph ── */
+  .feather-mark {
+    display: inline-block;
+    width: 13px;
+    height: 13px;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  /* ── Panel hover ── */
+  .panel { transition: background 0.18s; }
+  .panel:hover { background: var(--surface-hover, #f5f5f5); }
+  body { position: relative; }
+
+  /* ── Panel titles ── */
+  .panel-title {
+    font-size: 13px !important;
+    font-weight: 800 !important;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #1a1a1a !important;
+    font-family: Georgia, 'Times New Roman', serif !important;
+  }
+
+  /* ── Detail rows ── */
+  .panel-label {
+    font-size: 10px !important;
+    font-weight: 800 !important;
+    letter-spacing: 0.12em !important;
+    text-transform: uppercase !important;
+    color: #991B1B !important;
+    font-family: Georgia, 'Times New Roman', serif !important;
+  }
+  .panel-value {
+    font-size: 13px !important;
+    font-weight: 400 !important;
+    color: var(--fg) !important;
+  }
+  .panel-value.mono {
+    font-family: var(--ff-mono) !important;
+    font-size: 12px !important;
+  }
+
+  /* ── Story ── */
+  .story-block { padding: 20px 0; border-bottom: 0.5px solid var(--border); }
+  .story-block:last-child { border-bottom: none; }
+  .story-step {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .story-text {
+    font-size: 13.5px;
+    font-weight: 400;
+    color: var(--fg);
+    line-height: 1.95;
+  }
+  .story-text strong, .story-text b {
+    font-weight: 650;
+    color: #991B1B;
+  }
+
+  /* ── Summary ── */
+  .summary-body {
+    font-size: 13.5px;
+    font-weight: 400;
+    color: var(--fg);
+    line-height: 1.95;
+  }
+  .summary-body strong, .summary-body b {
+    font-weight: 650;
+    color: #991B1B;
+  }
+
+  /* ── Evidence — intelligence briefing style ── */
+  .evidence-pre {
+    margin: 0;
+    padding: 16px 24px;
+    font-family: var(--ff-mono);
+    font-size: 11.5px;
+    line-height: 1.65;
+    white-space: pre-wrap;
+    word-break: break-word;
+    background: var(--bg);
+    border-top: 0.5px solid var(--border);
+  }
+  .evidence-briefing-row {
+    padding: 14px 24px;
+    border-bottom: 0.5px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .evidence-briefing-row:last-child { border-bottom: none; }
+  .evidence-briefing-label {
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #991B1B;
+    font-family: Georgia, 'Times New Roman', serif;
+  }
+  .evidence-briefing-value {
+    font-size: 13.5px;
+    font-weight: 400;
+    color: var(--fg);
+    line-height: 1.7;
+    font-family: var(--ff-mono);
+  }
+  .evidence-string-list {
+    margin: 0;
+    padding: 16px 24px 20px 24px;
+    list-style: none;
+  }
+  .evidence-string-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 9px 0;
+    border-bottom: 0.5px solid var(--border);
+    font-size: 13px;
+    font-weight: 400;
+    color: var(--fg);
+    line-height: 1.75;
+  }
+  .evidence-string-list li:last-child { border-bottom: none; }
+
+  /* ── AI Actions ── */
+  .ai-actions-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 16px 24px 12px;
+    border-bottom: 0.5px solid var(--border);
+  }
+  .ai-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    background: #991B1B;
+    color: #fff;
+    border: 1px solid #991B1B;
+    border-radius: 3px;
+    padding: 4px 10px;
+    cursor: default;
+    transition: background 0.15s, color 0.15s;
+  }
+  .ai-badge:hover {
+    background: #fff;
+    color: #991B1B;
+  }
+  .ai-action-list {
+    margin: 0;
+    padding: 8px 24px 20px 24px;
+    list-style: none;
+  }
+  .ai-action-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px 0;
+    border-bottom: 0.5px solid var(--border);
+  }
+  .ai-action-item:last-child { border-bottom: none; }
+  .ai-action-index {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: #991B1B;
+    width: 18px;
+    flex-shrink: 0;
+    margin-top: 3px;
+    font-family: var(--ff-mono);
+  }
+  .ai-action-text {
+    font-size: 13.5px;
+    font-weight: 400;
+    color: var(--fg);
+    line-height: 1.8;
+  }
+
+  /* ── Timeline ── */
+  .tl-entry { display: flex; gap: 16px; padding: 0 24px 0 20px; }
+  .tl-spine { display: flex; flex-direction: column; align-items: center; flex-shrink: 0; width: 16px; }
+  .tl-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex-shrink: 0; margin-top: 5px; opacity: 0.4; }
+  .tl-dot--first { background: #991B1B; opacity: 1; }
+  .tl-line { width: 1px; flex: 1; background: var(--border); margin: 4px 0; min-height: 20px; }
+  .tl-body { padding: 4px 0 22px; flex: 1; }
+  .tl-ts {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 5px;
+  }
+  .tl-evt { font-size: 13px; font-weight: 450; color: var(--fg); line-height: 1.65; }
+  .tl-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #555;
+    margin-top: 6px;
+    font-family: var(--ff-mono);
+    letter-spacing: 0.03em;
+  }
+  .tl-meta-sep { color: #aaa; font-weight: 400; }
+
+  /* ── Attack Chain ── */
+  .chain-step { display: flex; gap: 16px; align-items: flex-start; padding: 14px 0; border-bottom: 0.5px solid var(--border); }
+  .chain-step:last-child { border-bottom: none; }
+  .chain-index {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #991B1B;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .chain-phase {
+    font-size: 13.5px;
+    font-weight: 800;
+    color: #111;
+    letter-spacing: 0.01em;
+    font-family: var(--ff-mono);
+  }
+  .chain-tech {
+    font-size: 11.5px;
+    font-weight: 500;
+    color: #333;
+    font-family: var(--ff-mono);
+    margin-left: 6px;
+    font-style: italic;
+  }
+  .chain-desc {
+    font-size: 12.5px;
+    font-weight: 350;
+    color: var(--muted);
+    margin-top: 5px;
+    line-height: 1.75;
+  }
+  /* ── Status control strip ── */
+  .status-strip {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 64px;
+    margin-bottom: 32px;
+  }
+  .status-strip-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 0;
+    border-top: 0.5px solid var(--border);
+    border-bottom: 0.5px solid var(--border);
+  }
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-family: var(--ff-mono, monospace);
+  }
+  .status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .status-pill.open   { color: #15803D; }
+  .status-pill.open   .status-dot {
+    background: #15803D;
+    animation: pulse-green 2s infinite;
+  }
+  .status-pill.closed { color: #9B9B93; }
+  .status-pill.closed .status-dot { background: #9B9B93; }
+
+  @keyframes pulse-green {
+    0%   { box-shadow: 0 0 0 0 rgba(21,128,61,0.4); }
+    70%  { box-shadow: 0 0 0 6px rgba(21,128,61,0); }
+    100% { box-shadow: 0 0 0 0 rgba(21,128,61,0); }
+  }
+
+  .status-strip-note {
+    font-size: 11.5px;
+    font-weight: 400;
+    color: #9B9B93;
+    font-family: var(--ff-mono);
+  }
+
+  /* ── Linked alerts section ── */
+  .linked-alerts-wrap {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 64px 80px;
+  }
+  .linked-alerts-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 16px;
+    border-bottom: 0.5px solid var(--border);
+    margin-bottom: 0;
+  }
+  .linked-alerts-title {
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #1a1a1a;
+    font-family: var(--ff);
+  }
+  .linked-alerts-count {
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .linked-alert-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 0;
+    border-bottom: 0.5px solid var(--border);
+    text-decoration: none;
+    transition: background 130ms ease;
+    cursor: pointer;
+  }
+  .linked-alert-row:last-child { border-bottom: none; }
+  .linked-alert-row:hover .linked-alert-title { color: #991B1B; }
+  .linked-alert-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+    min-width: 0;
+  }
+  .linked-alert-title {
+    font-size: 13.5px;
+    font-weight: 400;
+    color: var(--fg);
+    line-height: 1.5;
+    transition: color 130ms ease;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .linked-alert-arrow {
+    font-size: 13px;
+    color: #C5C5BF;
+    flex-shrink: 0;
+    margin-left: 16px;
+    transition: color 130ms ease;
+  }
+  .linked-alert-row:hover .linked-alert-arrow { color: #991B1B; }
+  .linked-alert-empty {
+    padding: 20px 0;
+    font-size: 13px;
+    font-weight: 300;
+    color: var(--muted);
+    font-style: italic;
+  }
+
+  @media (max-width: 768px) {
+    .status-strip { padding-left: 24px; padding-right: 24px; }
+    .linked-alerts-wrap { padding-left: 24px; padding-right: 24px; }
+  }
+
+  /* ── Misc ── */
+  .action-list { margin: 0; padding: 16px 24px 20px 40px; }
+  .action-list li { font-size: 13.5px; font-weight: 300; color: var(--muted); line-height: 1.85; margin-bottom: 8px; }
+  .action-list li:last-child { margin-bottom: 0; }
+  .panel-empty { padding: 16px 24px; font-size: 13px; font-weight: 300; color: var(--muted); }
+  #close-incident-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #FEF2F2;
+    color: #991B1B;
+    border: 1px solid #FECACA;
+    font-family: var(--ff);
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 7px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 130ms ease, color 130ms ease, border-color 130ms ease, opacity 130ms ease;
+  }
+  #close-incident-btn:hover:not(:disabled) {
+    background: #991B1B;
+    color: #fff;
+    border-color: #991B1B;
+  }
+  #close-incident-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 10000;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-overlay.visible { display: flex; }
+  .modal-card {
+    background: var(--bg, #fff);
+    border-radius: 10px;
+    max-width: 420px;
+    width: 90%;
+    padding: 28px 28px 24px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.18);
+  }
+  .modal-title {
+    font-family: var(--ff-mono);
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--fg);
+    margin: 0 0 12px;
+  }
+  .modal-message {
+    font-family: var(--ff-mono);
+    font-size: 13.5px;
+    color: var(--ff);
+    line-height: 1.6;
+    margin: 0 0 24px;
+  }
+  .modal-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .modal-btn {
+    width: 100%;
+    padding: 11px 16px;
+    border-radius: 4px;
+    font-family: var(--ff-mono);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 130ms ease, color 130ms ease;
+    border: 0.5px solid var(--border);
+  }
+  .modal-btn-primary {
+    background: #991B1B;
+    color: #fff;
+    border: none;
+  }
+  .modal-btn-primary:hover { background: #7F1D1D; }
+  .modal-btn-primary:disabled { opacity: 0.6; cursor: default; }
+  .modal-btn-secondary {
+    background: transparent;
+    color: var(--fg);
+  }
+  .modal-btn-secondary:hover { background: var(--surface-hover, #f5f5f5); }
+  .modal-btn-cancel {
+    background: transparent;
+    color: var(--muted);
+    border: none;
+    text-align: center;
+    padding: 4px;
+  }
+  .toast-confirm {
+    position: fixed;
+    bottom: 28px;
+    right: 28px;
+    background: #15803D;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 12px 18px;
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+    z-index: 10001;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 180ms ease, transform 180ms ease;
+  }
+  .toast-confirm.visible { opacity: 1; transform: translateY(0); }
+</style>
+</head>
+<body>
+
+<div id="page-loading" style="max-width:1280px;margin:0 auto;padding:72px 64px">
+  <div class="skeleton" style="width:500px;height:36px;margin-bottom:12px"></div>
+  <div class="skeleton" style="width:260px;height:14px"></div>
+</div>
+
+<div id="page-content" style="display:none">
+  <div class="page-hero">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+      <a href="incidents.html" class="page-back">← Incidents</a>
+      <button id="close-incident-btn" type="button">Close Incident →</button>
+    </div>
+    <div id="inc-badge-row" style="display:flex;align-items:center;gap:10px;margin-bottom:16px"></div>
+    <h1 class="page-title" id="inc-title">Loading…</h1>
+    <div class="page-title-meta" id="inc-meta"></div>
+  </div>
+
+  <div class="detail-layout">
+    <div class="detail-main">
+      <div class="panel">
+        <div class="panel-hd"><div class="panel-title">Story</div></div>
+        <div class="panel-body" id="story-body" style="padding:8px 24px 16px"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-hd" style="display:flex;justify-content:space-between;align-items:center">
+          <div class="panel-title">Timeline</div>
+          <div id="timeline-count" style="font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted)"></div>
+        </div>
+        <div class="panel-body"><div id="timeline-container"></div></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-hd"><div class="panel-title">Attack Chain</div></div>
+        <div class="panel-body" style="padding:16px 24px" id="chain-body"></div>
+      </div>
+
+      <div class="panel" id="evidence-panel">
+        <div class="panel-hd"><div class="panel-title">Evidence</div></div>
+        <div id="evidence-body"></div>
+      </div>
+
+      <div class="panel" id="actions-panel">
+        <div class="panel-hd"><div class="panel-title">AI Actions</div></div>
+        <div id="actions-body"></div>
+      </div>
+    </div>
+
+    <div class="detail-sidebar">
+      <div class="panel">
+        <div class="panel-hd"><div class="panel-title">Summary</div></div>
+        <div class="panel-body" id="panel-summary"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-hd"><div class="panel-title">Incident Details</div></div>
+        <div class="panel-body" id="panel-details"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- ── Status Strip ── -->
+  <div class="status-strip" id="status-strip" style="display:none;">
+    <div class="status-strip-inner">
+      <div class="status-pill" id="status-pill">
+        <div class="status-dot"></div>
+        <span id="status-pill-label">OPEN</span>
+      </div>
+      <div class="status-strip-note" id="status-strip-note"></div>
+    </div>
+  </div>
+
+  <!-- ── Linked Alerts ── -->
+  <div class="linked-alerts-wrap" id="linked-alerts-wrap" style="display:none;">
+    <div class="linked-alerts-header">
+      <div class="linked-alerts-title">Linked Alerts</div>
+      <div class="linked-alerts-count" id="linked-alerts-count"></div>
+    </div>
+    <div id="linked-alerts-list"></div>
+  </div>
+<div class="modal-overlay" id="close-incident-modal">
+  <div class="modal-card">
+    <div class="modal-title">Close Incident?</div>
+    <div class="modal-message">All alerts related to this incident will be automatically closed.</div>
+    <div class="modal-actions">
+      <button class="modal-btn modal-btn-primary" id="modal-confirm-close">Close Incident</button>
+      <button class="modal-btn modal-btn-secondary" id="modal-check-alerts">Check Related Alerts</button>
+      <button class="modal-btn modal-btn-cancel" id="modal-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-confirm" id="close-toast">Incident closed successfully</div>
+<div id="page-error" style="display:none;max-width:1280px;margin:0 auto;padding:0 64px 96px">
+  <a href="incidents.html" class="page-back">← Incidents</a>
+  <div id="error-container"></div>
+</div>
+
+<script src="../shared/api.js"></script>
+<script src="../shared/utils.js"></script>
+<script src="../shared/state.js"></script>
+<script src="../shared/components.js"></script>
+<script>
+(function () {
+  // ── FEATHER SVG ──────────────────────────────────────
+  var FEATHER_SVG = '<svg class="feather-mark" viewBox="0 0 13 13" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">'
+    + '<path d="M6.5 1C6.5 1 9.5 3 9.5 6.5C9.5 8.5 8 10.5 6.5 12" stroke="currentColor" stroke-width="0.9" stroke-linecap="round"/>'
+    + '<path d="M6.5 1C6.5 1 3.5 3 3.5 6.5C3.5 8.5 5 10.5 6.5 12" stroke="currentColor" stroke-width="0.9" stroke-linecap="round"/>'
+    + '<path d="M6.5 12V4" stroke="currentColor" stroke-width="0.9" stroke-linecap="round"/>'
+    + '<path d="M5 5.5L6.5 4.5L8 5.5" stroke="currentColor" stroke-width="0.75" stroke-linecap="round" stroke-linejoin="round"/>'
+    + '<path d="M4.5 7.5L6.5 6.5L8.5 7.5" stroke="currentColor" stroke-width="0.75" stroke-linecap="round" stroke-linejoin="round"/>'
+    + '</svg>';
+
+  // ── OWL CONFIG ──────────────────────────────────────
+  var OWL = {
+    width  : 150,
+    height : 610,
+    top    : 12,
+    right  : 200,
+    glowWidth       : 120,
+    glowHeight      : 25,
+    glowBlur        : 1,
+    glowOpacity     : 0.7,
+    glowOffsetTop   : 337,
+    glowOffsetRight : 7,
+    images : {
+      critical : '../assets/images/owl_critical.png',
+      high     : '../assets/images/owl_high.png',
+      medium   : '../assets/images/owl_medium.png',
+      low      : '../assets/images/owl_low.png',
+      closed   : '../assets/images/owl_closed.png'
+    }
+  };
+  // ────────────────────────────────────────────────────
+  SIEM_COMPONENTS.injectNav('incidents');
+  SIEM_COMPONENTS.injectFooter();
+
+  const id = SIEM_UTILS.getParam('id');
+  if (!id) return showError('No incident ID provided.');
+
+  SIEM_API.getIncident(id).then(render).catch(function (err) {
+    showError(err.message.includes('404') ? 'Incident not found.' : err.message);
+  });
+
+  function render(data) {
+    document.getElementById('page-loading').style.display = 'none';
+    document.getElementById('page-content').style.display = 'block';
+
+    const inc = data.incident || {};
+    const ctx = data.attack_context || {};
+    const ai = data.ai_analysis && typeof data.ai_analysis === 'object' ? data.ai_analysis : null;
+
+    const name = data.name
+      || inc.name
+      || inc.title
+      || (inc.type ? SIEM_UTILS.humanize(inc.type) : null)
+      || (inc.incident_type ? SIEM_UTILS.humanize(inc.incident_type) : null)
+      || (data.ai_analysis && data.ai_analysis.soc_ticket_summary
+            ? data.ai_analysis.soc_ticket_summary.split('.')[0]
+            : null)
+      || 'Incident';
+    const severity = data.severity || inc.severity || '';
+    const status = data.status || inc.status || '';
+    const incidentId = data.incident_id || inc.id || data._id || '—';
+    const host = SIEM_UTILS.hostDisplay(data.host) !== '—'
+      ? SIEM_UTILS.hostDisplay(data.host)
+      : (ctx.hosts_seen && ctx.hosts_seen[0] ? ctx.hosts_seen[0] : '—');
+
+    const sourceIp = data.source_ip
+      || (data.source && data.source.ip ? data.source.ip : null)
+      || ctx.source_ip
+      || (ctx.source_ips_seen && ctx.source_ips_seen[0])
+      || (ctx.source_ips && ctx.source_ips[0])
+      || '—';
+    const firstSeen = inc.first_seen || ctx.first_seen || data.created_at || data.first_seen || '';
+    const lastSeen  = inc.last_seen  || ctx.last_seen  || data.updated_at || data.last_seen  || '';
+
+    document.title = 'SIEM-AI — ' + name;
+    document.getElementById('inc-badge-row').innerHTML = SIEM_UTILS.severityBadge(severity) + ' ' + SIEM_UTILS.statusPill(status);
+    document.getElementById('inc-title').textContent = name;
+    const incType = inc.type || inc.incident_type || '';
+    document.getElementById('inc-meta').textContent = 'Incident ' + incidentId
+      + (incType ? '  ·  ' + SIEM_UTILS.humanize(incType) : '');
+
+    renderSummary(ai, severity, status);
+    renderStory(ai);
+    renderTimeline(ai);
+    renderChain(ai);
+    renderEvidence(ai);
+    renderActions(ai);
+    renderStatusStrip(inc, status);
+    renderLinkedAlerts(data);
+    setupCloseIncidentFlow(incidentId);
+
+    if (String(status || '').toLowerCase() === 'closed') {
+      var closeBtn = document.getElementById('close-incident-btn');
+      if (closeBtn) closeBtn.style.display = 'none';
+    }
+
+    const alertCount = inc.alert_count != null ? String(inc.alert_count) : null;
+    document.getElementById('panel-details').innerHTML = [
+      row('Host', host, true),
+      row('Source IP', sourceIp, true),
+      row('Severity', severity),
+      row('Alert Count', alertCount),
+      row('First Seen', SIEM_UTILS.formatDate(firstSeen)),
+      row('Last Updated', SIEM_UTILS.formatDate(lastSeen))
+    ].join('');
+  }
+
+  function renderSummary(ai, severity, status) {
+    var el = document.getElementById('panel-summary');
+    var summary = ai && ai.summary ? String(ai.summary).trim() : '';
+
+    var sevKey = String(severity || '').toLowerCase().trim();
+    var isClosed = String(status || '').toLowerCase().trim() === 'closed';
+    var owlKey = isClosed ? 'closed'
+      : (['critical', 'high', 'medium', 'low'].indexOf(sevKey) !== -1 ? sevKey : 'critical');
+
+    var glowColors = {
+      critical : '#991B1B',
+      high     : '#C2410C',
+      medium   : '#B45309',
+      low      : '#15803D',
+      closed   : '#787870'
+    };
+    var glow = glowColors[owlKey] || '#787870';
+    var owlSrc = OWL.images[owlKey] || '';
+
+    var prev = document.getElementById('siem-owl');
+    if (prev) prev.parentNode.removeChild(prev);
+    var prevGlow = document.getElementById('siem-owl-glow');
+    if (prevGlow) prevGlow.parentNode.removeChild(prevGlow);
+
+    if (owlSrc) {
+      var img = document.createElement('img');
+      img.id  = 'siem-owl';
+      img.src = owlSrc;
+      img.alt = owlKey + ' owl';
+      img.style.cssText =
+        'position:absolute;'
+        + 'top:'    + OWL.top    + 'px;'
+        + 'right:'  + OWL.right  + 'px;'
+        + 'width:'  + OWL.width  + 'px;'
+        + 'height:' + OWL.height + 'px;'
+        + 'object-fit:contain;'
+        + 'pointer-events:none;'
+        + 'user-select:none;'
+        + 'z-index:9999;';
+      document.body.appendChild(img);
+
+      var glowDiv = document.createElement('div');
+      glowDiv.id = 'siem-owl-glow';
+      glowDiv.style.cssText =
+        'position:absolute;'
+        + 'top:'    + (OWL.top  + OWL.glowOffsetTop)   + 'px;'
+        + 'right:'  + (OWL.right + OWL.glowOffsetRight) + 'px;'
+        + 'width:'  + OWL.glowWidth  + 'px;'
+        + 'height:' + OWL.glowHeight + 'px;'
+        + 'background:linear-gradient(to bottom, ' + glow + ' 0%, transparent 100%);'
+        + 'clip-path:polygon(40% 0%, 60% 0%, 100% 100%, 0% 100%);'
+        + 'filter:blur(' + OWL.glowBlur + 'px);'
+        + 'opacity:' + OWL.glowOpacity + ';'
+        + 'pointer-events:none;'
+        + 'user-select:none;'
+        + 'z-index:9998;';
+      document.body.appendChild(glowDiv);
+    }
+
+    if (!summary) {
+      el.innerHTML = '<div class="panel-empty">No summary available.</div>';
+      return;
+    }
+
+    el.innerHTML = '<div style="padding:16px 24px;">'
+      + '<div class="summary-body">' + SIEM_UTILS.esc(summary) + '</div>'
+      + '</div>';
+  }
+
+  function renderStory(ai) {
+    const el = document.getElementById('story-body');
+    const story = ai ? ai.attack_story : null;
+
+    if (story == null || story === '') {
+      el.innerHTML = '<div class="story-text">No story available.</div>';
+      return;
+    }
+
+    if (typeof story === 'string') {
+      el.innerHTML = '<div class="story-block"><div class="story-text">' + SIEM_UTILS.esc(story) + '</div></div>';
+      return;
+    }
+
+    if (!Array.isArray(story) || !story.length) {
+      el.innerHTML = '<div class="story-text">No story available.</div>';
+      return;
+    }
+
+    el.innerHTML = story.map(function (s, i) {
+      const text = typeof s === 'string' ? s : (s && (s.text || s.body || s.description || s.title)) || '—';
+      return '<div class="story-block">'
+        + '<div class="story-step">Step ' + (i + 1) + '</div>'
+        + '<div class="story-text">' + SIEM_UTILS.esc(text) + '</div>'
+        + '</div>';
+    }).join('');
+  }
+
+  function renderTimeline(ai) {
+    const el = document.getElementById('timeline-container');
+    const countEl = document.getElementById('timeline-count');
+    const timeline = ai && Array.isArray(ai.timeline) ? ai.timeline.filter(Boolean) : [];
+
+    if (!timeline.length) {
+      countEl.textContent = '';
+      SIEM_COMPONENTS.showEmpty(el, 'No timeline available', 'Timeline data is not included in AI analysis.');
+      return;
+    }
+
+    countEl.textContent = timeline.length + ' event' + (timeline.length !== 1 ? 's' : '');
+
+    el.innerHTML = timeline.map(function (entry, i) {
+      const ts   = entry.timestamp && entry.timestamp !== 'not available' ? SIEM_UTILS.formatDate(entry.timestamp) : '—';
+      const evt  = entry.event     || '—';
+      const ip   = entry.source_ip && entry.source_ip !== 'not available' ? entry.source_ip : null;
+      const host = entry.host      && entry.host      !== 'not available' ? entry.host      : null;
+
+      var metaHtml = '';
+      if (ip || host) {
+        metaHtml = '<div class="tl-meta">'
+          + (ip ? '<span>' + SIEM_UTILS.esc(ip) + '</span>' : '')
+          + (ip && host ? '<span class="tl-meta-sep">·</span>' : '')
+          + (host ? '<span>' + SIEM_UTILS.esc(host) + '</span>' : '')
+          + '</div>';
+      }
+
+      return '<div class="tl-entry">'
+        + '<div class="tl-spine"><div class="tl-dot' + (i === 0 ? ' tl-dot--first' : '') + '"></div>'
+        + (i < timeline.length - 1 ? '<div class="tl-line"></div>' : '') + '</div>'
+        + '<div class="tl-body">'
+        + '<div class="tl-ts">' + SIEM_UTILS.esc(ts) + '</div>'
+        + '<div class="tl-evt">' + SIEM_UTILS.esc(evt) + '</div>'
+        + metaHtml
+        + '</div>'
+        + '</div>';
+    }).join('');
+  }
+
+  function renderChain(ai) {
+    const el = document.getElementById('chain-body');
+    const chain = ai && Array.isArray(ai.attack_chain) ? ai.attack_chain.filter(Boolean) : [];
+
+    if (!chain.length) {
+      el.innerHTML = '<div class="panel-empty">No attack chain available.</div>';
+      return;
+    }
+
+    el.innerHTML = chain.map(function (step, i) {
+      const phase = step.phase       || '—';
+      const tech  = step.technique   || '';
+      const desc  = step.description || '';
+      return '<div class="chain-step">'
+        + '<div class="chain-index">' + (i + 1) + '</div>'
+        + '<div class="chain-content">'
+        + '<div class="chain-phase">' + SIEM_UTILS.esc(phase)
+        + (tech ? '<span class="chain-tech">' + SIEM_UTILS.esc(tech) + '</span>' : '')
+        + '</div>'
+        + (desc ? '<div class="chain-desc">' + SIEM_UTILS.esc(desc) + '</div>' : '')
+        + '</div>'
+        + '</div>';
+    }).join('');
+  }
+
+  function renderEvidence(ai) {
+    const body = document.getElementById('evidence-body');
+    const evidence = ai ? ai.evidence : null;
+
+    if (evidence == null
+      || (Array.isArray(evidence) && !evidence.length)
+      || (typeof evidence === 'object' && !Array.isArray(evidence) && !Object.keys(evidence).length)) {
+      body.innerHTML = '<div class="panel-empty">No evidence available.</div>';
+      return;
+    }
+
+    if (Array.isArray(evidence)) {
+      if (evidence.every(function (item) { return typeof item === 'string'; })) {
+        body.innerHTML = '<ul class="evidence-string-list">'
+          + evidence.map(function (item) {
+            return '<li>' + FEATHER_SVG + '<span>' + SIEM_UTILS.esc(item) + '</span></li>';
+          }).join('')
+          + '</ul>';
+        return;
+      }
+      body.innerHTML = '<pre class="evidence-pre">' + SIEM_UTILS.esc(JSON.stringify(evidence, null, 2)) + '</pre>';
+      return;
+    }
+
+    if (typeof evidence === 'object') {
+      const rows = Object.entries(evidence).map(function (entry) {
+        const val = entry[1];
+        const display = val == null ? '—' : (typeof val === 'object' ? JSON.stringify(val) : String(val));
+        return '<div class="evidence-briefing-row">'
+          + '<div class="evidence-briefing-label">' + SIEM_UTILS.esc(SIEM_UTILS.humanize(entry[0])) + '</div>'
+          + '<div class="evidence-briefing-value">' + SIEM_UTILS.esc(display) + '</div>'
+          + '</div>';
+      }).join('');
+      body.innerHTML = rows || '<div class="panel-empty">No evidence available.</div>';
+      return;
+    }
+
+    body.innerHTML = '<pre class="evidence-pre">' + SIEM_UTILS.esc(String(evidence)) + '</pre>';
+  }
+
+  function renderActions(ai) {
+    const body = document.getElementById('actions-body');
+    const actions = ai && Array.isArray(ai.recommended_actions) ? ai.recommended_actions.filter(Boolean) : [];
+
+    if (!actions.length) {
+      body.innerHTML = '<div class="panel-empty">No recommended actions available.</div>';
+      return;
+    }
+
+    body.innerHTML =
+      '<div class="ai-actions-header">'
+      + '<span class="ai-badge">' + FEATHER_SVG + 'AI Analyst</span>'
+      + '</div>'
+      + '<ol class="ai-action-list">'
+      + actions.map(function (action, i) {
+          const text = typeof action === 'string' ? action : JSON.stringify(action);
+          const num = (i + 1) < 10 ? '0' + (i + 1) : String(i + 1);
+          return '<li class="ai-action-item">'
+            + '<span class="ai-action-index">' + num + '</span>'
+            + '<span class="ai-action-text">' + SIEM_UTILS.esc(text) + '</span>'
+            + '</li>';
+        }).join('')
+      + '</ol>';
+  }
+
+  function row(label, val, mono) {
+    const v = val == null || val === '' ? '—' : val;
+    const cls = mono && v !== '—' ? 'panel-value mono' : 'panel-value';
+    return '<div class="panel-row">'
+      + '<span class="panel-label">' + SIEM_UTILS.esc(label) + '</span>'
+      + '<span class="' + cls + '">' + SIEM_UTILS.esc(String(v)) + '</span>'
+      + '</div>';
+  }
+  function renderStatusStrip(inc, status) {
+    var strip     = document.getElementById('status-strip');
+    var pill      = document.getElementById('status-pill');
+    var label     = document.getElementById('status-pill-label');
+    var note      = document.getElementById('status-strip-note');
+
+    strip.style.display = 'block';
+
+    var s = (status || 'open').toLowerCase();
+    pill.className = 'status-pill ' + s;
+    label.textContent = s.toUpperCase();
+
+    // Incident status is read-only — derived from alerts
+    // Show a helpful note explaining how to change it
+    if (s === 'open') {
+      note.textContent = 'Close all linked alerts to close this incident.';
+    } else {
+      note.textContent = 'Reopen any linked alert to reopen this incident.';
+    }
+  }
+
+  function renderLinkedAlerts(data) {
+    var wrap      = document.getElementById('linked-alerts-wrap');
+    var listEl    = document.getElementById('linked-alerts-list');
+    var countEl   = document.getElementById('linked-alerts-count');
+
+    var related   = data.related || {};
+    var alertIds  = related.alert_ids || [];
+
+    wrap.style.display = 'block';
+
+    if (!alertIds.length) {
+      countEl.textContent = '';
+      listEl.innerHTML = '<div class="linked-alert-empty">No linked alerts found.</div>';
+      return;
+    }
+
+    countEl.textContent = alertIds.length + ' alert' + (alertIds.length !== 1 ? 's' : '');
+    listEl.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:16px 0;">Loading alerts…</div>';
+
+    // Fetch each alert and render a row
+    var promises = alertIds.map(function(alertId) {
+      return fetch('http://localhost:8000/api/alerts/' + encodeURIComponent(alertId))
+        .then(function(r) {
+          if (!r.ok) return null;
+          return r.json();
+        })
+        .catch(function() { return null; });
+    });
+
+    Promise.all(promises).then(function(alerts) {
+      var valid = alerts.filter(Boolean);
+
+      if (!valid.length) {
+        listEl.innerHTML = '<div class="linked-alert-empty">Could not load linked alerts.</div>';
+        return;
+      }
+
+      listEl.innerHTML = valid.map(function(alert) {
+        var rule     = alert.rule || {};
+        var desc     = rule.description || rule.name || rule.id || 'Unknown Alert';
+        var alertId  = (alert.alert && alert.alert.id) ? alert.alert.id : alert._id;
+        var esId     = alert._id;
+        var severity = (rule.severity || '').toLowerCase();
+        var status   = (alert.status  || '').toUpperCase();
+
+        // Use ES _id for the URL since that's what alert detail page uses
+        var href = 'alert.html?id=' + encodeURIComponent(esId);
+
+        var sevDot = '';
+        var dotColor = severity === 'critical' ? '#991B1B'
+                     : severity === 'high'     ? '#C2410C'
+                     : severity === 'medium'   ? '#B45309'
+                     : severity === 'low'      ? '#15803D'
+                     : '#C5C5BF';
+
+        sevDot = '<div style="width:6px;height:6px;border-radius:50%;background:'
+          + dotColor + ';flex-shrink:0;margin-top:6px;"></div>';
+
+        var statusTag = '';
+        if (status === 'CLOSED') {
+          statusTag = '<span style="font-size:10px;font-weight:600;letter-spacing:0.06em;'
+            + 'text-transform:uppercase;color:#9B9B93;font-family:var(--ff-mono);'
+            + 'margin-left:12px;flex-shrink:0;">Closed</span>';
+        }
+
+        return '<a class="linked-alert-row" href="' + SIEM_UTILS.esc(href) + '">'
+          + '<div class="linked-alert-left">'
+          + sevDot
+          + '<span class="linked-alert-title">' + SIEM_UTILS.esc(desc) + '</span>'
+          + statusTag
+          + '</div>'
+          + '<span class="linked-alert-arrow">→</span>'
+          + '</a>';
+      }).join('');
+    });
+  }
+  function setupCloseIncidentFlow(incidentId) {
+    var openBtn      = document.getElementById('close-incident-btn');
+    var modal        = document.getElementById('close-incident-modal');
+    var confirmBtn    = document.getElementById('modal-confirm-close');
+    var checkBtn      = document.getElementById('modal-check-alerts');
+    var cancelBtn     = document.getElementById('modal-cancel');
+    var toast         = document.getElementById('close-toast');
+
+    function openModal() { modal.classList.add('visible'); }
+    function closeModal() { modal.classList.remove('visible'); }
+
+    openBtn.addEventListener('click', openModal);
+    cancelBtn.addEventListener('click', closeModal);
+
+    modal.addEventListener('click', function (e) {
+      if (e.target === modal) closeModal();
+    });
+
+    checkBtn.addEventListener('click', function () {
+      closeModal();
+      var target = document.getElementById('linked-alerts-wrap');
+      if (target) {
+        var top = target.getBoundingClientRect().top + window.pageYOffset - 80;
+        window.scrollTo({ top: top, behavior: 'smooth' });
+      }
+    });
+
+    confirmBtn.addEventListener('click', function () {
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = 'Closing...';
+      openBtn.disabled = true;
+
+      fetch('http://localhost:8000/api/incidents/' + encodeURIComponent(incidentId) + '/close', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+        .then(function (r) {
+          if (!r.ok) throw new Error('Close request failed');
+          return r.json();
+        })
+        .then(function () {
+          closeModal();
+
+          var pill = document.getElementById('status-pill');
+          var label = document.getElementById('status-pill-label');
+          var note = document.getElementById('status-strip-note');
+          if (pill && label) {
+            pill.className = 'status-pill closed';
+            label.textContent = 'CLOSED';
+          }
+          if (note) {
+            note.textContent = 'Reopen any linked alert to reopen this incident.';
+          }
+
+          openBtn.style.display = 'none';
+
+          toast.classList.add('visible');
+          setTimeout(function () { toast.classList.remove('visible'); }, 3000);
+
+          SIEM_API.getIncident(incidentId).then(function (data) {
+            renderLinkedAlerts(data);
+          });
+        })
+        .catch(function () {
+          confirmBtn.disabled = false;
+          confirmBtn.textContent = 'Close Incident';
+          openBtn.disabled = false;
+          alert('Failed to close incident. Please try again.');
+        });
+    });
+  }
+  function showError(msg) {
+    document.getElementById('page-loading').style.display = 'none';
+    document.getElementById('page-error').style.display = 'block';
+    SIEM_COMPONENTS.showError(document.getElementById('error-container'), msg);
+  }
+})();
+</script>
+</body>
+</html>
