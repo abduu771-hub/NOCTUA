@@ -123,10 +123,6 @@ Isolated alerts are noise. NOCTUA links them.
 - **Cross-layer incidents** flagged explicitly (`is_cross_layer`) for fast triage
 - **Kill chain tracking**: from reconnaissance to impact, in one timeline
 
-| CORRELATION TYPE | ATT&CK MAPPING |
-|---|---|
-| *(add your 16 types here)* | *(tactic / technique ID)* |
-
 ---
 
 ## ▌06 · AI ENRICHMENT
@@ -268,9 +264,6 @@ noctua-siem/
 - [x] LLM narrative enrichment
 - [x] Real-time notifications and automated routing
 - [x] End-to-end validation with 29 simulated scenarios
-- [ ] Agentic triage and assisted prioritization
-- [ ] Allowlisting and false-positive tuning
-- [ ] EDR / XDR telemetry integration
 
 ---
 
@@ -279,12 +272,13 @@ noctua-siem/
 **Abderrahmane Boukoutti**
 State Engineer in Computer Science · Defensive Cybersecurity · SOC & SIEM
 
-[![LinkedIn](https://img.shields.io/badge/LINKEDIN-0E0E0D?style=for-the-badge&logo=linkedin&logoColor=white)](https://linkedin.com/in/abderrahmane-boukoutti)
+[![LinkedIn](https://img.shields.io/badge/LINKEDIN-0E0E0D?style=for-the-badge&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/abderrahmane-boukoutti-6a1434272/)
 [![GitHub](https://img.shields.io/badge/GITHUB-0E0E0D?style=for-the-badge&logo=github&logoColor=white)](https://github.com/abduu771-hub)
 [![Email](https://img.shields.io/badge/EMAIL-991B1B?style=for-the-badge&logo=gmail&logoColor=white)](mailto:boukoutti.abderrahmane@outlook.com)
 
 <div align="center">
 
-`NOCTUA · DETECT · CORRELATE · EXPLAIN`
+`           NOCTUA 
+· DETECT · CORRELATE · EXPLAIN`
 
 </div>
